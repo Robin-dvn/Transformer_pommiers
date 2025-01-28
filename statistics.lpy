@@ -1,0 +1,125 @@
+import random
+import csv
+from vmapplet.sequences import (
+    generate_sequence,
+    terminal_fate
+)
+from vmapplet.srandom import boolean_event
+from vmapplet.organs.growth_unit import GrowthUnitData
+from vmapplet.enums import Observation
+
+# TODO: implement
+sylleptic_year = False
+
+module apex(apex_data): scale=2
+module branch(): scale=1
+module growth_unit(growth_unit_data): scale=1
+module axiom()
+module metamer(metamer_data): scale=2
+module root(): scale=1
+# Initialize a CSV file to store the data
+csv_file = "extracted_data.csv"
+with open(csv_file, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(["Tree ID", "Sequence", "Sequence Type", "Terminal Bud Type", "Parent Unit ID", "Parent Branch ID", "Year","Syleptic"])
+
+def format_sequence(sequence):
+    # Extract only the second element (int) from each tuple and join them into a string
+    return ''.join(str(item[1]) for item in sequence)
+
+ignore: growth_unit
+
+production:
+
+apex(a):
+    bud_break = 'bud_break' in simulation.get_active_events()
+    if (
+        a.sequence_position == 0 and
+        a.get_observation() != Observation.DORMANT and (
+            a.parent_observation == Observation.FLORAL or
+            bud_break or (
+                sylleptic_year and
+                a.year < simulation.date.year and
+                a.get_observation() in (Observation.SMALL, Observation.MEDIUM, Observation.LARGE)
+            )
+        )
+    ):  
+        syleptic = False
+        if a.parent_observation == Observation.FLORAL:
+            syleptic = True
+        old_observation = a.get_observation()
+        a.parent_observation = old_observation
+        if a.parent_observation == Observation.SYLLEPTIC_SMALL:
+            a.parent_observation = Observation.SMALL
+            a.set_observation(Observation.SMALL)
+        elif a.parent_observation == Observation.SYLLEPTIC_MEDIUM:
+            a.parent_observation = Observation.MEDIUM
+            a.set_observation(Observation.MEDIUM)
+        elif a.parent_observation == Observation.SYLLEPTIC_LARGE:
+            a.parent_observation = Observation.LARGE
+            a.set_observation(Observation.LARGE)
+        
+        a.sequence  = generate_sequence(
+            a.get_observation(),
+            markov, simulation.year_no,
+            options.general.second_year_draws,
+            select_trunk=[int(options.general.select_trunk)]
+        )
+        a.sequence_position = len(a.sequence)
+        if a.get_observation() == Observation.TRUNK:
+            a.set_observation(Observation.LARGE)
+        elif a.get_observation() == Observation.SMALL and boolean_event(tree.spur_death_probability):
+            a.set_observation(Observation.DORMANT)
+        elif a.get_observation() == Observation.FLORAL:
+            a.set_observation(Observation.DORMANT)
+        else:
+            a.set_observation(terminal_fate(simulation.year_no, a.get_observation(), options.markov.terminal_fate))
+        
+        a.radius = 0
+        a.max_terminal_radius_target()
+        tree.growth_units += 1
+        # record the unit id that this apex belongs to (the id values start from 0)
+        a.parent_unit_id = tree.growth_units-1
+        
+        with open(csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                0,  # Assuming tree.id exists
+                format_sequence(a.sequence),
+                old_observation,  # Example logic for Sequence Type
+                a.get_observation().name,  # Assuming Observation enums have a name attribute
+                a.parent_unit_id,
+                a.parent_fbr_id,
+                simulation.year_no,
+                syleptic
+            ])
+
+       
+        # update counts
+        # if a.parent_observation == Observation.FLORAL:
+        #     data.counts.florals += 1
+        # elif a.parent_observation == Observation.SMALL:
+        #     data.counts.shorts += 1
+        # elif a.parent_observation == Observation.MEDIUM:
+        #     data.counts.mediums += 1
+        # elif a.parent_observation == Observation.LARGE:
+        #     data.counts.longs += 1
+        #     if a.sequence_position < 26:
+        #         data.counts.len_16_to_25 += 1
+        #     elif a.sequence_position < 41:
+        #         data.counts.len_26_to_40+=1
+        #     else:
+        #         data.counts.len_over_40+=1
+        # # save sequences into output data
+        # if options.output.sequences and simulation.date.year < 1999 and (a.parent_observation in ['large', 'medium', 'small']):
+        #     data.sequences.save(a.sequence, a.sequence_position)
+        # # Note that a.year was initially smaller than simulation.date.year
+        # # Once a growth unit is finished, a.year will be set as the same
+        # # This is to avoid the production of two growth units at the same axis
+        # # at the same year
+        a.year = simulation.date.year
+        nproduce growth_unit(GrowthUnitData(tree.growth_units, simulation.date.year, a.parent_observation == Observation.FLORAL)) apex(a)
+    else:
+        produce apex(a)
+
+endlsystem

@@ -1,0 +1,53 @@
+year = 2
+length = 'LONG'
+
+initial_probabilities = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+transition_probabilities = [
+    [0.0,   0.8,    0.1,    0.0,        0.1,        0.0,    0.0],
+    [0.0,   0.0,    1.0,    0.0,        0.0,        0.0,    0.0],
+    [0.0,   0.0,    0.0,    0.222222,   0.222222,   0.0,    0.555556],
+    [0.0,   0.0,    0.0,    0.0,        0.0,        1.0,    0.0],
+    [0.0,   0.0,    0.0,    0.0,        0.0,        1.0,    0.0],
+    [0.0,   0.0,    0.0,    0.0,        0.0,        0.0,    1.0],
+    [0.0,   0.0,    0.0,    0.0,        0.0,        0.0,    1.0]
+]
+
+observation_distributions = [
+    [1.0,       0.0,        0.0,        0.0,        0.0,        0.0],
+    [0.413396,  0.00001,    0.00159708, 0.554938,   0.0300588,  0.0],
+    [0.613925,  0.087387,   0.0386623,  0.0774184,  0.182608,   0.0],
+    [0.372968,  0.0120996,  0.108652,   0.430603,   0.0756774,  0.0],
+    [0.389248,  0.00001,    0.0052359,  0.0558823,  0.549624,   0.0],
+    [0.950948,  0.0010899,  0.00588831, 0.0377171,  0.00435704, 0.0],
+    [0.0,       0.0,        0.0,        0.0,        0.0,        1.0]
+]
+
+[[occupancy_distributions]]
+distribution = 'NEGATIVE_BINOMIAL'
+parameter = 2.05633
+probability = 0.519757
+bounds = [4.0, +inf]
+[[occupancy_distributions]]
+distribution = 'NEGATIVE_BINOMIAL'
+parameter = 0.955704
+probability = 0.337621
+bounds = [1.0, +inf]
+[[occupancy_distributions]]
+distribution = 'NEGATIVE_BINOMIAL'
+parameter = 8.12053
+probability = 0.191781
+bounds = [1.0, +inf]
+[[occupancy_distributions]]
+distribution = 'BINOMIAL'
+probability = 0.0
+bounds = [9.0, 10.0]
+[[occupancy_distributions]]
+distribution = 'BINOMIAL'
+probability = 0.833333
+bounds = [1.0, 9.0]
+[[occupancy_distributions]]
+distribution = 'NEGATIVE_BINOMIAL'
+parameter = 0.969697
+probability = 0.195122
+bounds = [2.0, +inf]
