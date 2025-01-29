@@ -29,12 +29,14 @@ class DatasetCreator():
     year_no:int
     _rng: np.random.Generator
     dataset: pd.DataFrame
+ 
 
     def __init__(self, outpath,seed,min_length,max_length,nb_samples_per_model) -> None:
         self.year_no = 0
         self._number_samples_per_model = nb_samples_per_model
         self._output_path = pathlib.Path(outpath or os.getcwd() + "/output")
-
+        self.dataset = pd.DataFrame()
+        self.tokenised_dataset = pd.DataFrame()
         self._seed = seed
         self._rng = np.random.default_rng(0)
         random.seed(self._seed)
@@ -85,7 +87,7 @@ class DatasetCreator():
                 long=self._markov_models[("LONG", 5)],
             )
 
-    def create_dataset(self,to_CSV = False,rewrite = True):
+    def create_data(self,to_CSV = False,rewrite = True):
         usedObservations =  [
             Observation.SMALL,
             Observation.FLORAL,
@@ -108,7 +110,7 @@ class DatasetCreator():
                     
                     sample = {
                         "Observation": obs.value,
-                        "Year": year + 1,
+                        "Year": "Y"+str(year + 1),
                         "Sequence": sequence,
                         "Terminal Fate": terminal
                     }
@@ -125,15 +127,6 @@ class DatasetCreator():
             self._output_path.mkdir(exist_ok=True)
             path = self._output_path/"dataset.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
             self.dataset.to_csv(path,index=False)
-            
 
-
-
-
-
-
-
-
-
-       
-
+    def load_data(self,path):        
+        self.dataset = pd.read_csv(path)
