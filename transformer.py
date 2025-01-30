@@ -38,12 +38,13 @@ class Transformer(nn.Module):
         self.fc_l = nn.Linear(d_model,out_vocab_size)
     
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor) -> Tensor:
+
         s_emb = self.embed(src)
         t_emb = self.embed(tgt)
         s_p_emb = self.posEmbed(s_emb)
         t_p_emb = self.posEmbed(t_emb)
 
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1])
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to("cuda")
         
         out_trans = self.transformer(
             s_p_emb, t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask

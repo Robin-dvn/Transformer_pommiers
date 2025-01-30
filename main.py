@@ -27,10 +27,10 @@ if __name__ == "__main__":
     IN_VOCAB_SIZE = 16
     OUT_VOCAB_SIZE = 11
     PADDING_IDX = 0
-    N_HEAD = 8
-    D_MODEL = 512
+    N_HEAD = 4
+    D_MODEL = 128
     LR = 0.001
-    NB_EPOCH = 500
+    NB_EPOCH = 1
 
     ########## WANDB Project ##############
     wandb.init(
@@ -91,9 +91,9 @@ if __name__ == "__main__":
         total_train_loss = 0
         for enc_inp,dec_inp,dec_target in tqdm(train_loader):
 
-            enc_inp.to(device)
-            dec_inp.to(device)
-            dec_target.to(device)
+            enc_inp =enc_inp.to(device)
+            dec_inp = dec_inp.to(device)
+            dec_target = dec_target.to(device)
             padding_mask = (dec_inp == PADDING_IDX).to(torch.float32)
 
             logits = model(enc_inp,dec_inp,padding_mask)
@@ -119,7 +119,7 @@ if __name__ == "__main__":
                 enc_inp = enc_inp.to(device)
                 dec_inp = dec_inp.to(device)
                 dec_target = dec_target.to(device)
-                padding_mask = (dec_inp == PADDING_IDX).to(torch.float32)
+                padding_mask = (dec_inp == PADDING_IDX).to(torch.float32).to(device)
 
                 logits = model(enc_inp,dec_inp,padding_mask)
 
