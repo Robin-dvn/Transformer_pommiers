@@ -34,7 +34,7 @@ class Transformer(nn.Module):
         super(Transformer,self).__init__()
         self.embed = nn.Embedding(in_vocab_size,d_model,padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.)
+        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=3,num_encoder_layers=3)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
     
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor) -> Tensor:

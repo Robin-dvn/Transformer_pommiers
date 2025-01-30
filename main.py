@@ -22,15 +22,15 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ########## CONSTANTS ##################
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 128
     VAL_SPLIT = 0.8
     IN_VOCAB_SIZE = 16
     OUT_VOCAB_SIZE = 11
     PADDING_IDX = 0
     N_HEAD = 4
     D_MODEL = 128
-    LR = 0.001
-    NB_EPOCH = 1
+    LR = 0.00005
+    NB_EPOCH = 5
 
     ########## WANDB Project ##############
     wandb.init(
