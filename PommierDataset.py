@@ -16,7 +16,7 @@ class PommierDataset(Dataset):
         """
         self.dataset = pd.read_csv(dataset_path)
         self.vocab = {
-            "LARGE": "L", "MEDIUM": "M", "SMALL": "S", "FLORAL": "F",
+            "LARGE": "L", "MEDIUM": "M", "SMALL": "S", "FLORAL": "F","DORMANT":"D",
             "Y1": "Y1", "Y2": "Y2", "Y3": "Y3", "Y4": "Y4", "Y5": "Y5"
         }
         
@@ -77,7 +77,7 @@ class PommierDataset(Dataset):
      
         decoder_input = torch.tensor([self.token_to_id["<SOS>"]] + token_ids[2:-1], dtype=torch.long)  # Ajout <SOS>
        
-        decoder_target = torch.tensor(token_ids[2:], dtype=torch.long)  # Ajout <EOS>
+        decoder_target = torch.tensor(token_ids[2:], dtype=torch.long)  
         
         return encoder_input, decoder_input, decoder_target
 

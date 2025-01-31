@@ -37,7 +37,7 @@ class Transformer(nn.Module):
         self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=3,num_encoder_layers=3)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
     
-    def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor) -> Tensor:
+    def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
 
         s_emb = self.embed(src)
         t_emb = self.embed(tgt)
@@ -51,6 +51,32 @@ class Transformer(nn.Module):
         )
         out = self.fc_l(out_trans)
         return out
+
+
+
+    def generate_batch(self,enc_input,sos_idx,device,end_toks_list,temperature = 1,max_length = 200):
+        ################# A Recoder C'est pas bon ################
+        self.eval()
+        sequence = torch.tensor([[sos_idx]],device = device)
+        for i in range(max_length):
+            with torch.no_grad():
+                logits = self(enc_input,sequence)
+                # print(logits)
+                logits = logits[:,-1,:] /temperature
+            probs = F.softmax(logits, dim=-1)
+            # print(probs)
+            next_token = torch.multinomial(probs, 1)
+            if next_token.item() in end_toks_list:
+                sequence = torch.cat([sequence,next_token],dim = 1)
+                break
+            sequence = torch.cat([sequence,next_token],dim = 1)
+            # print(sequence)
+        return sequence[:,0:].to('cpu').tolist()[0]
+
+
+
+
+
 
 if __name__ == "__main__":
     dataset = PommierDataset("out/dataset.csv")

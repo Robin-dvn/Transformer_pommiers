@@ -125,8 +125,13 @@ class DatasetCreator():
         print(Fore.MAGENTA + "📂 [INFO] Conversion en CSV..." + Style.RESET_ALL)
         if to_CSV:
             self._output_path.mkdir(exist_ok=True)
-            path = self._output_path/"dataset.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
+            path = self._output_path/"dataset100.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
             self.dataset.to_csv(path,index=False)
 
     def load_data(self,path):        
         self.dataset = pd.read_csv(path)
+
+
+if __name__ == "__main__":
+    datasetcreator = DatasetCreator("out/",1234,4,70,100)
+    datasetcreator.create_data(True)
