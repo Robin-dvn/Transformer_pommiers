@@ -68,7 +68,8 @@ class Transformer(nn.Module):
 
             probs = F.softmax(logits, dim=-1)
             next_tokens = torch.multinomial(probs, 1)
-            
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))):
+                next_tokens = torch.multinomial(probs, 1) 
             sequence = torch.cat([sequence,next_tokens],dim = 1)
 
             has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 
