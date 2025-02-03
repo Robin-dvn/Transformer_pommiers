@@ -36,15 +36,14 @@ class Transformer(nn.Module):
         self.posEmbed = PositionalEncoding(d_model)
         self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=3,num_encoder_layers=3)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
-    
+        self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
 
         s_emb = self.embed(src)
         t_emb = self.embed(tgt)
         s_p_emb = self.posEmbed(s_emb)
         t_p_emb = self.posEmbed(t_emb)
-
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to("cuda")
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
         
         out_trans = self.transformer(
             s_p_emb, t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
@@ -54,24 +53,30 @@ class Transformer(nn.Module):
 
 
 
-    def generate_batch(self,enc_input,sos_idx,device,end_toks_list,temperature = 1,max_length = 200):
-        ################# A Recoder C'est pas bon ################
+    def generate_batch(self,enc_input,sos_idx,device,end_toks_list,temperature = 1,max_length = 200,batch_size = 1):
+
+
         self.eval()
-        sequence = torch.tensor([[sos_idx]],device = device)
+        sequence = torch.tensor([[sos_idx]]*batch_size,device = device)
+        stop_mask = torch.tensor([False]*batch_size,device = device)
+
         for i in range(max_length):
             with torch.no_grad():
                 logits = self(enc_input,sequence)
-                # print(logits)
                 logits = logits[:,-1,:] /temperature
+
             probs = F.softmax(logits, dim=-1)
-            # print(probs)
-            next_token = torch.multinomial(probs, 1)
-            if next_token.item() in end_toks_list:
-                sequence = torch.cat([sequence,next_token],dim = 1)
+            next_tokens = torch.multinomial(probs, 1)
+            
+            sequence = torch.cat([sequence,next_tokens],dim = 1)
+
+            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list)) 
+
+            stop_mask = stop_mask | has_end_tok.flatten()
+            if stop_mask.all():
                 break
-            sequence = torch.cat([sequence,next_token],dim = 1)
-            # print(sequence)
-        return sequence[:,0:].to('cpu').tolist()[0]
+
+        return sequence
 
 
 
