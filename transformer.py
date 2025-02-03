@@ -2,6 +2,7 @@
 from PommierDataset import PommierDataset,collate_fn
 from torch.utils.data import DataLoader
 from torch import Tensor
+from tqdm import tqdm
 
 import math
 import torch 
@@ -60,7 +61,7 @@ class Transformer(nn.Module):
         sequence = torch.tensor([[sos_idx]]*batch_size,device = device)
         stop_mask = torch.tensor([False]*batch_size,device = device)
 
-        for i in range(max_length):
+        for i in tqdm(range(max_length),colour="green"):
             with torch.no_grad():
                 logits = self(enc_input,sequence)
                 logits = logits[:,-1,:] /temperature
@@ -70,7 +71,7 @@ class Transformer(nn.Module):
             
             sequence = torch.cat([sequence,next_tokens],dim = 1)
 
-            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list)) 
+            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 
 
             stop_mask = stop_mask | has_end_tok.flatten()
             if stop_mask.all():
