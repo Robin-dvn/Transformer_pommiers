@@ -1,7 +1,7 @@
 year = 3
 length = 'MEDIUM'
 
-initial_probabilities = [0.97560, 0.0, 0.00001, 0.0, 0.0243902, 0.0, 0.0]
+initial_probabilities = [0.97560, 0.0, 0.00001, 0.0, 0.0243900, 0.0, 0.0]
 
 transition_probabilities = [
     [0.0,   0.7,    0.0,    0.0,        0.1,        0.2,        0.0],
@@ -41,7 +41,7 @@ bounds = [1.0, +inf]
 [[occupancy_distributions]]
 distribution = 'BINOMIAL'
 probability = 0.5
-bounds = [1.0, 6.0] # a ete change [4.0 6.0] --> [1.0, 6.0]
+bounds = [4.0, 6.0] # a ete change [4.0 6.0] --> [1.0, 6.0]
 [[occupancy_distributions]]
 distribution = 'NEGATIVE_BINOMIAL'
 parameter = 1.81818

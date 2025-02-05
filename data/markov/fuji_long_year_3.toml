@@ -1,7 +1,7 @@
 year = 3
 length = 'LONG'
 
-initial_probabilities = [0.980769, 0.0192308, 0.0, 0.0, 0.0, 0.0, 0.0]
+initial_probabilities = [0.980769, 0.0192310, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 transition_probabilities = [
     [0.0,    0.921569,   0.0,       0.0,        0.0784314,  0.0,        0.0],

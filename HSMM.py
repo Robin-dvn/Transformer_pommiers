@@ -1,109 +1,201 @@
 import toml
 import numpy as np
-from hsmmlearn.hsmm import HSMMModel
-from hsmmlearn.emissions import MultinomialEmissions
-from scipy.stats import poisson, nbinom
-from hsmmlearn.base import _fb_impl
+from scipy.stats import nbinom, poisson,binom
 
-class HSMMProcessor:
-    def __init__(self, file_path):
-        """Initialise le modèle HSMM à partir d'un fichier TOML."""
-        self.file_path = file_path
-        self.model = self.load_hsmm_from_toml()
-
-    def load_hsmm_from_toml(self):
-        """Charge un HSMM depuis un fichier TOML et construit le modèle avec hsmmlearn."""
-        hsmm_data = toml.load(self.file_path)
-        
-        # Extraire les paramètres
-        initial_probabilities = np.array(hsmm_data['initial_probabilities'])
-        transition_probabilities = np.array(hsmm_data['transition_probabilities'])
-        observation_distributions = np.array(hsmm_data['observation_distributions'])
-        occupancy_distributions = hsmm_data['occupancy_distributions']
-        
-        # Définir les distributions d'émission
-        self.n_states = len(initial_probabilities)
-        emissions = MultinomialEmissions(probabilities=observation_distributions)
-        
-        
-        # Définir les distributions de durée
-        durations = []
-        for occ in occupancy_distributions:
-            if occ['distribution'] == 'NEGATIVE_BINOMIAL':
-                durations.append(nbinom(n=occ['parameter'], p=occ['probability']))
-            elif occ['distribution'] == 'POISSON':
-                durations.append(poisson(mu=occ['parameter']))
-            else:
-                raise ValueError(f"Distribution de durée inconnue: {occ['distribution']}")
-        # Compléter la liste des durées avec une distribution Poisson par défaut si besoin
-        while len(durations) < 7:
-            durations.append(poisson(mu=5))  # Par défaut, durée moyenne de 5
-
-        
-        # Créer le modèle HSMM
-        model = HSMMModel(
-            emissions=emissions,
-            durations=durations,
-            tmat=transition_probabilities,
-            startprob=initial_probabilities,
-            support_cutoff=10  # Durée max prise en compte
-        )
-        
-        return model
-    def sequence_probability(self, obs):
-        print(obs.shape)
-        print(obs)
-        """Calcule la log-probabilité d'une séquence d'observations sous le HSMM."""
-        obs = np.atleast_1d(obs)  # Assure que c'est un tableau 1D
-        tau = len(obs)  # Longueur de la séquence
-        j = self.model.n_states  # Nombre d'états cachés
-        m = self.model.n_durations  # Nombre de durées possibles
-
-
-        # Initialisation des matrices utilisées par _fb_impl()
-        f = np.zeros((j, tau))
-        l = np.zeros((j, tau))
-        g = np.zeros((j, tau))
-        l1 = np.zeros((j, tau))
-        n = np.zeros(tau)  # Contiendra la probabilité finale
-        norm = np.zeros((j, tau))
-        eta = np.zeros((j, m))
-        xi = np.zeros((j, m))
+def generate_duration_matrix(toml_file, prob_cutoff=1e-6):
+    """
+    Génère une matrice de distribution de durée à partir d'un fichier TOML.
     
-
-        # Calcul des probabilités d’émission P(s_t | q_t)
-        likelihoods = self.model.emissions.likelihood(obs)
-        likelihoods[likelihoods < 1e-12] = 1e-12  # Pour éviter les zéros log
-
-        # Appel de _fb_impl() pour exécuter l'algorithme Forward-Backward
-        err = _fb_impl(
-            1, tau, j, m,
-            self.model._durations_flat.copy(), self.model._tmat_flat.copy(), self.model._startprob.copy(),
-            likelihoods.reshape(-1),
-            f.reshape(-1), l.reshape(-1), g.reshape(-1), l1.reshape(-1),
-            n, norm.reshape(-1), eta.reshape(-1), xi.reshape(-1)
-        )
-
-        if err != 0:
-            raise RuntimeError("Erreur dans l'algorithme Forward-Backward.")
-
-        return np.log(n).sum()  # Retourne la log-probabilité de la séquence
+    Paramètres :
+    - toml_file : chemin vers le fichier TOML
+    - prob_cutoff : seuil de troncature pour les distributions infinies
     
+    Retourne :
+    - D : Matrice des distributions de durée
+    """
+    # Charger le fichier TOML
+    data = toml.load(toml_file)
+    
+    occupancy_distributions = data['occupancy_distributions']
+    Tmax = 0  # Déterminer la durée maximale requise
+    
+    # Calculer la durée maximale en fonction des distributions
+    for dist in occupancy_distributions:
+        d_min, d_max = dist['bounds'][0], dist['bounds'][1]
+        if d_max == float("inf"):  # Troncature probabiliste
+            param = dist['parameter']
+            prob = dist.get('probability', None)  # La probabilité est facultative
+            
+            if dist['distribution'] == 'NEGATIVE_BINOMIAL':
+                p = prob if prob else 0.5  # Probabilité par défaut
+                d_max_auto = 1
+                while nbinom.sf(d_max_auto, param, p) > prob_cutoff:
+                    d_max_auto += 1
+                Tmax = max(Tmax, d_max_auto)
+            
+            elif dist['distribution'] == 'POISSON':
+                d_max_auto = 1
+                while poisson.sf(d_max_auto, param) > prob_cutoff:
+                    d_max_auto += 1
+                Tmax = max(Tmax, d_max_auto)
+        else:
+            Tmax = max(Tmax, int(d_max))
+    
+    # Initialiser la matrice des distributions
+    N = len(occupancy_distributions)
+    D = np.zeros((N+1, Tmax))
+    
+    # Remplir la matrice avec les distributions
+    for j, dist in enumerate(occupancy_distributions):
+        d_min, d_max = int(dist['bounds'][0]), dist['bounds'][1]
+        distribution_type = dist["distribution"]
 
-    def compute_sequence_probability(self, sequence):
-        """Calcule la probabilité d'une séquence sous le modèle HSMM."""
-        return self.sequence_probability(np.array(sequence))
+        if dist['distribution'] == 'NEGATIVE_BINOMIAL':
+            param = dist['parameter']
+            p = dist.get('probability', 0.5)
+            durations = np.arange(1, Tmax + 1)
+            probs = nbinom.pmf(durations, param, p)
+        elif distribution_type == "BINOMIAL":
+            durations = np.arange(1, Tmax + 1)
+            p = dist.get("probability", 1.)
+            probs = binom.pmf(durations, d_max, p) 
+        elif dist['distribution'] == 'POISSON':
+            param = dist['parameter']
+            durations = np.arange(1, Tmax + 1)
+            probs = poisson.pmf(durations, param)
+        
+        else:
+            raise ValueError(f"Distribution non supportée : {dist['distribution']}")
+        
+        # Appliquer les bornes
+        probs[:d_min-1] = 0  # Mettre à zéro les durées < d_min
+        if d_max != float("inf"):
+            probs[int(d_max):] = 0  # Mettre à zéro les durées > d_max
+        
+        # Normalisation
+        if probs.sum() > 0:
+            probs /= probs.sum()
 
+        
+        # Remplir la matrice
+        D[j, :len(probs)] = probs
+        D[6] = np.zeros(Tmax)  # Initialisation à 0
+        D[6][-1] = 1.0  # Toute la probabilité sur Tmax
+
+    
+    return D
+
+
+class HSMM:
+    def __init__(self, toml_file):
+        """
+        Initialise un modèle de Markov semi-caché (HSMM) à partir d'un fichier TOML.
+        """
+        self.data = toml.load(toml_file)
+        self.initial_probabilities = np.array(self.data['initial_probabilities'])
+        self.transition_probabilities = np.array(self.data['transition_probabilities'])
+        self.observation_distributions = np.array(self.data['observation_distributions'])
+        self.observation_distributions /= self.observation_distributions.sum(axis=1, keepdims=True)
+        self.transition_probabilities /= self.transition_probabilities.sum(axis=1, keepdims=True)
+        self.initial_probabilities /= self.initial_probabilities.sum(axis=0, keepdims=True)
+        # Générer la matrice de distribution de durée
+        self.duration_matrix = generate_duration_matrix(toml_file)
+    
+    def get_initial_probabilities(self):
+        """Retourne les probabilités initiales."""
+        return self.initial_probabilities
+    
+    def get_transition_matrix(self):
+        """Retourne la matrice de transition des états cachés."""
+        return self.transition_probabilities
+    
+    def get_observation_matrix(self):
+        """Retourne la matrice des distributions d'observation."""
+        return self.observation_distributions
+    
+    def get_duration_matrix(self):
+        """Retourne la matrice des distributions de durée."""
+        return self.duration_matrix
+    
+    def display_parameters(self):
+        """Affiche les paramètres du HSMM."""
+        print("Initial Probabilities:")
+        print(self.initial_probabilities)
+        print("\nTransition Probabilities:")
+        print(self.transition_probabilities)
+        print("\nObservation Distributions:")
+        print(self.observation_distributions)
+        print("\nDuration Matrix:")
+        print(self.duration_matrix)
+    
+    def generate_sequence(self, min_length, max_length):
+        """Génère une séquence d'états et d'observations avec une longueur entre min_length et max_length."""
+        sequence_length = np.random.randint(min_length, max_length + 1)
+        sequence_states = []
+        sequence_observations = []
+        
+        # Initialiser l'état
+        current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
+        
+        while len(sequence_states) < sequence_length:
+            sequence_states.append(current_state)
+            
+            # Générer la durée de cet état
+            duration_probs = self.duration_matrix[current_state]
+            duration = np.random.choice(len(duration_probs), p=duration_probs) + 1
+                        # Vérifier si l'état absorbant est atteint
+
+            # Générer les observations pour cette durée
+            for _ in range(duration):
+                if len(sequence_observations) >= sequence_length:
+                    break
+                observation_probs = self.observation_distributions[current_state]
+
+                observation = np.random.choice(len(observation_probs), p=observation_probs)
+                sequence_observations.append(observation)
+            
+            # Transition vers le nouvel état
+            new_state = np.random.choice(len(self.transition_probabilities), p=self.transition_probabilities[current_state])
+            if new_state   == 6:
+                break
+            current_state = new_state
+        
+        return sequence_states, sequence_observations
+
+    def forward_algorithm(self, observations):
+        """Applique l'algorithme Forward en log-space pour éviter l'underflow."""
+        T = len(observations)
+        N = len(self.initial_probabilities)
+        
+        log_alpha = np.full((N, T), -np.inf)  # Matrice des probabilités en log-space
+        log_initial = np.log(self.initial_probabilities + 1e-10)  # Éviter log(0)
+        log_transition = np.log(self.transition_probabilities + 1e-10)
+        log_observation = np.log(self.observation_distributions + 1e-10)
+        
+        # Initialisation
+        for i in range(N):
+            log_alpha[i, 0] = log_initial[i] + log_observation[i, observations[0]]
+        
+        # Récurrence
+        for t in range(1, T):
+            for j in range(N):
+                log_alpha[j, t] = np.logaddexp.reduce(
+                    log_alpha[:, t - 1] + log_transition[:, j]
+                ) + log_observation[j, observations[t]]
+        
+        # Finalisation
+        log_prob_O = np.logaddexp.reduce(log_alpha[:, -1])
+        return np.exp(log_prob_O)  # Convertir en probabilité réelle
 
 # Exemple d'utilisation
-
 if __name__ == "__main__":
+    hsmm_model = HSMM("data/markov/fuji_long_year_4.toml")
+    hsmm_model.display_parameters()
+    states, observations = hsmm_model.generate_sequence(10, 20)
+    print("\nGenerated Sequence of States:", states)
+    print("Generated Sequence of Observations:", observations)
     
-    toml_file = "data/markov/fuji_long_year_4.toml"  # Remplace par ton fichier réel
-    hsmm_processor = HSMMProcessor(toml_file)
+    prob_O = hsmm_model.forward_algorithm(observations)
+    print("\nProbability of Observed Sequence:", prob_O)
 
-    # Séquence d'observation donnée (remplace par une séquence réelle)
-    sequence = [0, 3, 3, 4, 4, 5]  # Exemples de symboles observés
 
-    log_prob = hsmm_processor.compute_sequence_probability(sequence)
-    print(f"Log-probabilité de la séquence\n : {log_prob}")

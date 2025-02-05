@@ -86,7 +86,7 @@ class Transformer(nn.Module):
 
 
 if __name__ == "__main__":
-    dataset = PommierDataset("out/dataset.csv")
+    dataset = PommierDataset("out/datasetcustom10000.csv")
     dataloader = DataLoader(dataset,3,False,collate_fn=collate_fn)
 
     batch = next(iter(dataloader))

@@ -22,10 +22,10 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ########## CONSTANTS ##################
 
-    BATCH_SIZE = 128
+    BATCH_SIZE = 512
     VAL_SPLIT = 0.8
-    IN_VOCAB_SIZE = 16
-    OUT_VOCAB_SIZE = 11
+    IN_VOCAB_SIZE = 17
+    OUT_VOCAB_SIZE = 12
     PADDING_IDX = 0
     N_HEAD = 4
     D_MODEL = 128
@@ -54,13 +54,13 @@ if __name__ == "__main__":
     outpath = "out"
     data_creator = DatasetCreator(outpath,1234,4,70,1)
     if Path(outpath+"/dataset.csv").exists():
-        data_creator.load_data(outpath+"/dataset.csv")
+        data_creator.load_data(outpath+"/datasetcustom10000.csv")
     else:
         data_creator.create_data(True,True)
 
    ######### PYTORCH DATASET CREATION ##### 
 
-    dataset = PommierDataset(outpath+ "/dataset.csv")
+    dataset = PommierDataset(outpath+ "/datasetcustom10000.csv")
     train_size = int(VAL_SPLIT*len(dataset))
     val_size = len(dataset) - train_size
     train_split,val_split = random_split(dataset,[train_size, val_size])
@@ -132,6 +132,8 @@ if __name__ == "__main__":
             avg_train_loss = total_train_loss / len(train_loader)
             avg_val_loss = total_eval_loss / len(val_loader)
             print(f"[INFO] Epoch {epoch} : train loss = {avg_train_loss:.4f}, val loss = {avg_val_loss:.4f}")
+
+    torch.save(model.state_dict(), "hsmmcustom.pth")
 
 
 
