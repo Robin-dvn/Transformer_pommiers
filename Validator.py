@@ -132,7 +132,7 @@ class Validator:
             fig = px.bar(counts, x='Terminal Fate', y='Count', color='Source', barmode='group',
                         title=f'Comparison of Terminal Fate for {observation} in {year}',
                         color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'})
-            # fig.show()
+            fig.show()
 
     def sequence_length_validation(self,generated_dataset_path):
         dataset = self.df
@@ -196,7 +196,7 @@ class Validator:
             # Ajuster les limites de l'axe des x pour espacer les points
             fig.update_xaxes(range=[-8, 9])  # Ajuster les limites de l'axe des x pour espacer les points
 
-            # fig.show()
+            fig.show()
 
     def sequence_digit_stats(self,generated_dataset_path):
         dataset = self.df
@@ -305,7 +305,7 @@ class Validator:
 
             fig.update_yaxes(range=[y_min, y_max])  # Ajuster les limites de l'axe des y
 
-            # fig.show()
+            fig.show()
 
     def log_prob_distribution_of_sequences(self,generated_dataset_path):
 
