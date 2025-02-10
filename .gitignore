@@ -3,3 +3,4 @@ __pycache__
 wandb
 pommiers
 *.pth
+assets/

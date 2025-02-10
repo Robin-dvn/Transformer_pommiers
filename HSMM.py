@@ -53,30 +53,24 @@ def generate_duration_matrix(toml_file, prob_cutoff=1e-6):
         if dist['distribution'] == 'NEGATIVE_BINOMIAL':
             param = dist['parameter']
             p = dist.get('probability', 0.5)
-            durations = np.arange(1, Tmax + 1)
+            durations = np.arange(0, Tmax )
             probs = nbinom.pmf(durations, param, p)
         elif distribution_type == "BINOMIAL":
-            durations = np.arange(1, Tmax + 1)
+            durations = np.arange(0, Tmax )
             p = dist.get("probability", 1.)
-            probs = binom.pmf(durations, d_max, p) 
+            bounds = dist.get("bounds", False)
+            inf = bounds[0]
+            sup = bounds[1]
+            probs = binom.pmf(durations, sup-inf, p) # gestion des bornes de la distribution (sup -inf)= nombres de tirages  
         elif dist['distribution'] == 'POISSON':
             param = dist['parameter']
-            durations = np.arange(1, Tmax + 1)
+            durations = np.arange(0, Tmax )
             probs = poisson.pmf(durations, param)
         
         else:
             raise ValueError(f"Distribution non supportée : {dist['distribution']}")
         
-        # Appliquer les bornes
-        probs[:d_min-1] = 0  # Mettre à zéro les durées < d_min
-        if d_max != float("inf"):
-            probs[int(d_max):] = 0  # Mettre à zéro les durées > d_max
-        
-        # Normalisation
-        if probs.sum() > 0:
-            probs /= probs.sum()
-
-        
+    
         # Remplir la matrice
         D[j, :len(probs)] = probs
         D[6] = np.zeros(Tmax)  # Initialisation à 0
@@ -131,12 +125,19 @@ class HSMM:
         
         # Initialisation
         current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
-        
-        while len(sequence_states) < sequence_length:
+        final =False
+        while len(sequence_states) < sequence_length and not final:
+            if len(sequence_states) >= sequence_length:
+                sequence_observations = []
+                sequence_states = []
+                current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
+
             sequence_states.append(current_state)
             # Générer la durée pour cet état
             duration_probs = self.duration_matrix[current_state]
-            duration = np.random.choice(len(duration_probs), p=duration_probs) + 1
+            lower_bound = int(self.data['occupancy_distributions'][current_state]['bounds'][0])# ajout du décalage de distribution
+            duration = np.random.choice(len(duration_probs), p=duration_probs) + lower_bound
+            print(duration)
             # Générer les observations pendant la durée
             for _ in range(duration):
                 if len(sequence_observations) >= sequence_length:
@@ -147,6 +148,7 @@ class HSMM:
             # Transition vers un nouvel état
             new_state = np.random.choice(len(self.transition_probabilities), p=self.transition_probabilities[current_state])
             if new_state == 6:  # par exemple, état absorbant
+                final = True
                 break
             current_state = new_state
         
@@ -199,11 +201,12 @@ class HSMM:
                 log_alpha[t, j] = somme_d
         
         log_prob = np.logaddexp.reduce(log_alpha[T - 1, :])
+        log_prob = log_prob / T  # Normalisation par la longueur de la séquence
         return np.exp(log_prob)
 # Exemple d'utilisation
 if __name__ == "__main__":
-    hsmm_model = HSMM("data/markov/fuji_long_year_4.toml")
-    hsmm_model.display_parameters()
+    hsmm_model = HSMM("data/markov/fuji_medium_year_4.toml")
+    # hsmm_model.display_parameters()
     states, observations = hsmm_model.generate_sequence(10, 20)
     print("\nGenerated Sequence of States:", states)
     print("Generated Sequence of Observations:", observations)

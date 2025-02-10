@@ -12,16 +12,26 @@ import numpy as np
 import plotly.graph_objects as go
 import json
 import os
+from datetime import datetime
 
 class Validator:
-    def __init__(self, model:Transformer, device, token_to_id,datapath= None, ):
+    def __init__(self, model:Transformer, device, token_to_id,datapath= None,show=False ):
         self.model = model
         self.device = device
         self.datapath = datapath
         self.token_to_id = token_to_id
         self.id_to_token = {v: k for k, v in token_to_id.items()}
         self.stats = {}
+        self.show = show
         self.df = pd.DataFrame(columns=["Observation", "Year", "Sequence", "Terminal Fate"])
+        self.simu_folder = os.path.join("assets", datetime.now().strftime("%Y%m%d_%H%M%S"))
+        os.makedirs(self.simu_folder, exist_ok=True)
+        
+    def save_figure(self, fig, validation_type, observation, year):
+        folder_path = os.path.join(self.simu_folder, validation_type)
+        os.makedirs(folder_path, exist_ok=True)
+        file_path = os.path.join(folder_path, f"{observation}_{year}_{validation_type}.png")
+        fig.write_image(file_path)
     
     def generate_data(self, nb_samples, output_path, end_toks_list):
         sequences_generees = []
@@ -132,185 +142,213 @@ class Validator:
             fig = px.bar(counts, x='Terminal Fate', y='Count', color='Source', barmode='group',
                         title=f'Comparison of Terminal Fate for {observation} in {year}',
                         color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'})
-            fig.show()
+            if self.show: fig.show()
+            fig.update_layout(
+                title_text=f'Terminal fates for {observation} in {year}',
+                height=800,
+                width=1200,
+                margin=dict(t=100, b=100, l=50, r=50)
+            )
+            
+            self.save_figure(fig, "markov_model_validation", observation, year)
 
-    def sequence_length_validation(self,generated_dataset_path):
+    def sequence_length_validation(self, generated_dataset_path):
+        from pathlib import Path  # si besoin d'utiliser pathlib ailleurs
+
         dataset = self.df
         generated_dataset = pd.read_csv(generated_dataset_path)
 
-        # Ajouter une colonne 'Source' pour indiquer la provenance des données
         dataset['Source'] = 'Dataset'
         generated_dataset['Source'] = 'Generated Dataset'
-
-        # Combiner les deux datasets
         combined_dataset = pd.concat([dataset, generated_dataset])
-
-        # Obtenir les couples uniques (Observation, Year)
         unique_pairs = combined_dataset[['Observation', 'Year']].drop_duplicates()
 
-# Créer un graphique pour chaque couple (Observation, Year)
         for _, row in unique_pairs.iterrows():
             observation = row['Observation']
             year = row['Year']
-
-            # Filtrer les données pour le couple actuel
-            subset = combined_dataset[(combined_dataset['Observation'] == observation) & (combined_dataset['Year'] == year)].copy()
-
-            # Calculer la longueur des séquences
-            subset.loc[:, 'Sequence Length'] = subset['Sequence'].apply(len)
-
-            # Calculer la moyenne et l'écart type des longueurs de séquence pour chaque source
+            subset = combined_dataset[(combined_dataset['Observation'] == observation) &
+                                    (combined_dataset['Year'] == year)].copy()
+            subset['Sequence Length'] = subset['Sequence'].apply(len)
             stats = subset.groupby('Source')['Sequence Length'].agg(['mean', 'std']).reset_index()
-           
-            # Calculer l'erreur de moyenne et de std
-            mean_error = abs(stats.loc[stats['Source'] == 'Dataset', 'mean'].values[0] - stats.loc[stats['Source'] == 'Generated Dataset', 'mean'].values[0])
-            std_error = abs(stats.loc[stats['Source'] == 'Dataset', 'std'].values[0] - stats.loc[stats['Source'] == 'Generated Dataset', 'std'].values[0])
 
-            # Mettre à jour le dictionnaire stats
-            # Mettre à jour le dictionnaire stats
-            if (observation, year) not in self.stats:
-                self.stats[(observation, year)] = {
-                    "mean_error": mean_error,
-                    "std_error": std_error
-                }
-            else:
-                self.stats[(observation, year)]["mean_error"] = mean_error
-                self.stats[(observation, year)]["std_error"] = std_error
+            mean_error = abs(stats.loc[stats['Source'] == 'Dataset', 'mean'].values[0] -
+                            stats.loc[stats['Source'] == 'Generated Dataset', 'mean'].values[0])
+            std_error = abs(stats.loc[stats['Source'] == 'Dataset', 'std'].values[0] -
+                            stats.loc[stats['Source'] == 'Generated Dataset', 'std'].values[0])
+            self.stats[(observation, year)] = {"mean_error": mean_error, "std_error": std_error}
 
-            # Ajouter une colonne pour les annotations
-            stats['text'] = stats.apply(lambda row: f"Mean: {row['mean']:.2f}<br>Std: {row['std']:.2f}", axis=1)
-
-            # Définir les limites de l'axe des y
             y_max = stats['mean'].max() + 10 * stats['std'].max()
             y_min = stats['mean'].min() - 10 * stats['std'].max()
 
-            # Créer le graphique
-            fig = px.scatter(stats, x='Source', y='mean', error_y='std', 
+            # On retire les annotations sur les points en n'utilisant pas le paramètre 'text'
+            fig = px.scatter(stats, x='Source', y='mean', error_y='std',
                             title=f'Sequence Length Comparison for {observation} in {year}',
                             labels={'mean': 'Average Sequence Length', 'std': 'Standard Deviation'},
-                            color='Source', color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'},
-                            text='text', size_max=10)  # Ajuster la taille maximale des points
-            fig.update_traces(marker=dict(size=12, opacity=0.8), error_y=dict(width=5), textposition='top right')  # Ajuster la taille et l'opacité des points, et la largeur des barres d'erreur
-            fig.update_yaxes(range=[y_min, y_max])  # Ajuster les limites de l'axe des y
+                            color='Source',
+                            color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'},
+                            size_max=10)
+            fig.update_traces(marker=dict(size=12, opacity=0.8), error_y=dict(width=5))
+            fig.update_yaxes(range=[y_min, y_max])
+            fig.update_xaxes(range=[-1, 2])
 
-            # Ajuster les limites de l'axe des x pour espacer les points
-            fig.update_xaxes(range=[-8, 9])  # Ajuster les limites de l'axe des x pour espacer les points
+            # Positionner la légende à droite et agrandir la marge droite pour faire de la place
+            fig.update_layout(
+                legend=dict(x=1.02, y=1, font=dict(size=12)),
+                margin=dict(l=50, r=200, t=50, b=50)
+            )
+            # Combiner les stats dans une annotation unique formatée avec des retours à la ligne
+            annotation_text = (
+                f"Dataset<br>Mean: {stats.loc[stats['Source']=='Dataset', 'mean'].values[0]:.2f}<br>"
+                f"Std: {stats.loc[stats['Source']=='Dataset', 'std'].values[0]:.2f}<br><br>"
+                f"Generated Dataset<br>Mean: {stats.loc[stats['Source']=='Generated Dataset', 'mean'].values[0]:.2f}<br>"
+                f"Std: {stats.loc[stats['Source']=='Generated Dataset', 'std'].values[0]:.2f}"
+            )
 
-            fig.show()
+            # Placer l'annotation en bas à droite du graph
+            fig.update_layout(
+                annotations=[
+                    dict(
+                        x=0.98, y=0.02, xref='paper', yref='paper',
+                        text=annotation_text,
+                        showarrow=False, font=dict(size=12),
+                        xanchor='right', yanchor='bottom'
+                    )
+                ]
+            )
 
-    def sequence_digit_stats(self,generated_dataset_path):
-        dataset = self.df
+
+            if self.show: fig.show()
+            fig.update_layout(
+                title_text=f'Sequence length for {observation} in {year}',
+                height=800,
+                width=1200,
+                margin=dict(t=100, b=100, l=50, r=50)
+            )
+            self.save_figure(fig, "sequence_length_validation", observation, year)
+
+    def sequence_digit_stats(self, generated_dataset_path):
+        import pandas as pd
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        # Préparation des données
+        dataset = self.df.copy()
         generated_dataset = pd.read_csv(generated_dataset_path)
-
-        # Ajouter une colonne 'Source' pour indiquer la provenance des données
         dataset['Source'] = 'Dataset'
         generated_dataset['Source'] = 'Generated Dataset'
-
-        # Combiner les deux datasets
         combined_dataset = pd.concat([dataset, generated_dataset])
-
-        # Obtenir les couples uniques (Observation, Year)
         unique_pairs = combined_dataset[['Observation', 'Year']].drop_duplicates()
 
-        # Créer un graphique pour chaque couple (Observation, Year)
         for _, row in unique_pairs.iterrows():
             observation = row['Observation']
             year = row['Year']
+            subset = combined_dataset[(combined_dataset['Observation'] == observation) &
+                                    (combined_dataset['Year'] == year)].copy()
+            ds_subset = subset[subset['Source'] == 'Dataset']
+            gen_subset = subset[subset['Source'] == 'Generated Dataset']
 
-            # Filtrer les données pour le couple actuel
-            subset = combined_dataset[(combined_dataset['Observation'] == observation) & (combined_dataset['Year'] == year)].copy()
+            # Comptage des occurrences de chiffres (0 à 4)
+            count_digits = lambda seq: pd.Series([int(ch) for ch in seq if ch.isdigit() and int(ch) <= 4]).value_counts()
+            ds_counts = ds_subset['Sequence'].apply(count_digits).fillna(0).reindex(columns=range(5), fill_value=0)
+            gen_counts = gen_subset['Sequence'].apply(count_digits).fillna(0).reindex(columns=range(5), fill_value=0)
 
-            # Séparer les données par source
-            dataset_subset = subset[subset['Source'] == 'Dataset']
-            generated_subset = subset[subset['Source'] == 'Generated Dataset']
+            # Moyennes et variances par chiffre
+            ds_mean = ds_counts.mean()
+            ds_var = ds_counts.var()
+            gen_mean = gen_counts.mean()
+            gen_var = gen_counts.var()
 
-            # Compter les occurrences de chaque chiffre dans les séquences pour chaque source
-            dataset_digit_counts = dataset_subset['Sequence'].apply(lambda seq: pd.Series([int(char) for char in seq if char.isdigit() and int(char) <= 4]).value_counts()).fillna(0)
-            generated_digit_counts = generated_subset['Sequence'].apply(lambda seq: pd.Series([int(char) for char in seq if char.isdigit() and int(char) <= 4]).value_counts()).fillna(0)
+            # Calcul des erreurs
+            mean_errors = abs(ds_mean - gen_mean)
+            var_errors = abs(ds_var - gen_var)
 
-            # Aligner les index des séries résultantes
-            dataset_digit_counts = dataset_digit_counts.reindex(columns=range(5), fill_value=0)
-            generated_digit_counts = generated_digit_counts.reindex(columns=range(5), fill_value=0)
+            # Mise à jour de self.stats
+            key = (observation, year)
+            self.stats[key] = {
+                "digit_mean_errors": mean_errors.to_dict(),
+                "digit_std_errors": var_errors.to_dict()
+            }
 
-            # Calculer la moyenne et la variance des occurrences de chaque chiffre pour chaque source
-            dataset_mean_counts = dataset_digit_counts.mean()
-            dataset_var_counts = dataset_digit_counts.var()
-            generated_mean_counts = generated_digit_counts.mean()
-            generated_var_counts = generated_digit_counts.var()
+            # Construction d'un DataFrame de stats et calcul des erreurs par ligne
+            stats_df = pd.DataFrame({
+                'Digit': ds_mean.index,
+                'Dataset Mean': ds_mean.values,
+                'Dataset Var': ds_var.values,
+                'Generated Mean': gen_mean.values,
+                'Generated Var': gen_var.values
+            }).set_index('Digit')
+            stats_df['Mean Error'] = abs(stats_df['Dataset Mean'] - stats_df['Generated Mean'])
+            stats_df['Var Error'] = abs(stats_df['Dataset Var'] - stats_df['Generated Var'])
+            table_df = stats_df.reset_index()
 
-            # Calculer l'erreur standard et l'erreur moyenne pour chaque chiffre
-            mean_errors = abs(dataset_mean_counts - generated_mean_counts)
-            std_errors = abs(dataset_var_counts - generated_var_counts)
-
-            # Mettre à jour le dictionnaire stats
-            if (observation, year) not in self.stats:
-                self.stats[(observation, year)] = {
-                    "digit_mean_errors": mean_errors.to_dict(),
-                    "digit_std_errors": std_errors.to_dict()
-                }
-            else:
-                self.stats[(observation, year)]["digit_mean_errors"] = mean_errors.to_dict()
-                self.stats[(observation, year)]["digit_std_errors"] = std_errors.to_dict()
-
-
-            # Créer un DataFrame pour les statistiques
-            stats = pd.DataFrame({
-                'Digit': dataset_mean_counts.index,
-                'Dataset Mean': dataset_mean_counts.values,
-                'Dataset Var': dataset_var_counts.values,
-                'Generated Mean': generated_mean_counts.values,
-                'Generated Var': generated_var_counts.values
-            })
-
-            # Préparer les données pour le graphique
+            # Préparation des données pour le scatter plot
             plot_data = pd.DataFrame({
-                'Digit': list(stats['Digit']) * 2,
-                'Mean': list(stats['Dataset Mean']) + list(stats['Generated Mean']),
-                'Variance': list(stats['Dataset Var']) + list(stats['Generated Var']),
-                'Source': ['Dataset'] * len(stats) + ['Generated Dataset'] * len(stats),
-                'text': [f"Mean: {mean:.2f}<br>Var: {var:.2f}" for mean, var in zip(stats['Dataset Mean'], stats['Dataset Var'])] +
-                        [f"Mean: {mean:.2f}<br>Var: {var:.2f}" for mean, var in zip(stats['Generated Mean'], stats['Generated Var'])]
+                'Digit': list(ds_mean.index) * 2,
+                'Mean': list(ds_mean.values) + list(gen_mean.values),
+                'Variance': list(ds_var.values) + list(gen_var.values),
+                'Source': ['Dataset'] * len(ds_mean) + ['Generated Dataset'] * len(gen_mean),
+                'text': ([f"Mean: {m:.2f}<br>Var: {v:.2f}" for m, v in zip(ds_mean.values, ds_var.values)] +
+                        [f"Mean: {m:.2f}<br>Var: {v:.2f}" for m, v in zip(gen_mean.values, gen_var.values)])
             })
-
-            # Définir les limites de l'axe des y
             y_max = plot_data['Mean'].max() + 10 * plot_data['Variance'].max()
             y_min = plot_data['Mean'].min() - 10 * plot_data['Variance'].max()
 
-            # Créer le graphique
-            fig = px.scatter(plot_data, x='Digit', y='Mean', error_y='Variance', 
-                             title=f'Digit Occurrence Stats for {observation} in {year}',
-                             labels={'Mean': 'Average Occurrence', 'Variance': 'Variance'},
-                             color='Source', color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'},
-                             text='text', size_max=10)  # Ajuster la taille maximale des points
-            fig.update_traces(marker=dict(size=12, opacity=0.8), error_y=dict(width=5))  # Ajuster la taille et l'opacité des points, et la largeur des barres d'erreur
+            # Création du scatter plot avec Plotly Express
+            fig_scatter = px.scatter(plot_data, x='Digit', y='Mean', error_y='Variance',
+                                    title=f'Digit Occurrence Stats for {observation} in {year}',
+                                    labels={'Mean': 'Average Occurrence', 'Variance': 'Variance'},
+                                    color='Source',
+                                    color_discrete_map={'Dataset': 'green', 'Generated Dataset': 'blue'},
+                                    size_max=10)
+            fig_scatter.update_traces(marker=dict(size=12, opacity=0.8), error_y=dict(width=5))
 
-            # Ajouter des annotations spécifiques pour chaque source
-            for trace in fig.data:
-                if trace.name == 'Dataset':
-                    trace.textposition = 'top left'
-                elif trace.name == 'Generated Dataset':
-                    trace.textposition = 'top right'
+            fig_scatter.update_yaxes(range=[y_min, y_max])
 
-            # Ajouter des annotations pour l'erreur de moyenne et de variance
-            for digit in stats['Digit']:
-                mean_error = abs(stats.loc[digit, 'Dataset Mean'] - stats.loc[digit, 'Generated Mean'])
-                var_error = abs(stats.loc[digit, 'Dataset Var'] - stats.loc[digit, 'Generated Var'])
-                fig.add_annotation(
-                    x=digit, y=stats.loc[digit, 'Dataset Mean'],
-                    text=f"Mean Error: {mean_error:.2f}<br>Var Error: {var_error:.2f}",
-                    showarrow=False,
-                    font=dict(color="red"),
-                    xshift=-50, yshift=-30  # Positionner l'annotation en bas à gauche du point
-                )
+            # Préparation du tableau des annotations (une ligne par chiffre)
+            # Colonnes: Digit, Dataset Mean, Generated Mean, Mean Error, Dataset Var, Generated Var, Var Error
+            table_header = ["Digit", "Dataset Mean", "Generated Mean", "Mean Error", "Dataset Var", "Generated Var", "Var Error"]
+            annotation_rows = [
+                [digit,
+                f"{row['Dataset Mean']:.2f}",
+                f"{row['Generated Mean']:.2f}",
+                f"{row['Mean Error']:.2f}",
+                f"{row['Dataset Var']:.2f}",
+                f"{row['Generated Var']:.2f}",
+                f"{row['Var Error']:.2f}"]
+                for digit, row in stats_df.iterrows()
+            ]
+            table_trace = go.Table(
+                header=dict(values=table_header, fill_color='paleturquoise', align='left'),
+                cells=dict(values=list(zip(*annotation_rows)), fill_color='lavender', align='left')
+            )
 
-            fig.update_yaxes(range=[y_min, y_max])  # Ajuster les limites de l'axe des y
+            # Création d'une figure en deux parties (graph + tableau)
+            fig = make_subplots(rows=2, cols=1,
+                                row_heights=[0.7, 0.3],
+                                vertical_spacing=0.1,
+                                specs=[[{"type": "xy"}],
+                                    [{"type": "table"}]])
+            for trace in fig_scatter.data:
+                fig.add_trace(trace, row=1, col=1)
+            fig.add_trace(table_trace, row=2, col=1)
+            fig.update_layout(title_text=f'Digit Occurrence Stats and Annotations for {observation} in {year}')
+            if self.show: fig.show()        
+            # Définir une hauteur explicite pour que le tableau soit entièrement visible
+            fig.update_layout(
+                title_text=f'Digit Occurrence Stats & Details for {observation} in {year}',
+                height=800,
+                width=1200,
+                margin=dict(t=100, b=100, l=50, r=50)
+            )
 
-            fig.show()
+            self.save_figure(fig, "sequence_digit_stats", observation, year)
+
 
     def log_prob_distribution_of_sequences(self,generated_dataset_path):
 
                 
-        def generate_and_analyze_sequences_from_csv(dataset_path, generated_dataset_path, year, type):
+        def analyze_sequences_from_csv(dataset_path, generated_dataset_path, year, type):
             toml_file = f"data/markov/fuji_{type}_year_{year}.toml"
             hsmm_model = HSMM(toml_file)
             dic = {"long": "LARGE", "medium": "MEDIUM"}
@@ -378,19 +416,27 @@ class Validator:
                 opacity=0.8
             )
             fig.update_layout(
-                title="Distribution des log-probabilités des séquences générées et originales",
+                title=f"Distribution des log-probabilités pour l'observation {dic[type]} en Y{year}",
                 xaxis_title="Log-Probabilité de la séquence",
                 yaxis_title="Nombre de séquences",
                 barmode='overlay'
             )
 
-            fig.show()
+
+            if self.show: fig.show()
+            fig.update_layout(
+                title_text=f"Distribution des log-probabilités pour l'observation {dic[type]} en Y{year}",
+                height=800,
+                width=1200,
+                margin=dict(t=100, b=100, l=50, r=50)
+            )
+            self.save_figure(fig, "log_prob_distribution_of_sequences", type, year)
             return js_distance
         
         
         for year in range(3, 6):
             for type in ["long", "medium"]:
-                js_distance = generate_and_analyze_sequences_from_csv(self.datapath, generated_dataset_path, year, type)
+                js_distance = analyze_sequences_from_csv(self.datapath, generated_dataset_path, year, type)
                 
                 if (year, type) not in self.stats:
                     self.stats[(year, type)] = {
@@ -430,7 +476,7 @@ class Validator:
         )])
 
         fig.update_layout(title="Statistics Table")
-        fig.show()
+        if self.show: fig.show()
 
 
     def save_stats(self, filepath):
@@ -463,15 +509,15 @@ if __name__ == "__main__":
 
     validator = Validator(model, device, token_to_id=vocab_to_id)
     nb_samples =1100
-    # validator.load_data("out/datasetcustom10000.csv") 
-    # validator.markov_model_validation("out/generated_datasetcustom10000.csv")
-    # validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
-    # validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
-    # validator.log_prob_distribution_of_sequences("out/generated_datasetcustom10000.csv")
+    validator.load_data("out/datasetcustom10000.csv") 
+    validator.markov_model_validation("out/generated_datasetcustom10000.csv")
+    validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
+    validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
+    validator.log_prob_distribution_of_sequences("out/generated_datasetcustom10000.csv")
     # validator.plot_stats()
     # validator.save_stats("out/stats_2.json")
-    validator.load_stats("out/stats.json")
-    validator.plot_stats()
+    # validator.load_stats("out/stats.json")
+    # validator.plot_stats()
     
 
     # validator.sequence_digit_stats("out/generated_dataset10000.csv")
