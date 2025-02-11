@@ -1,8 +1,9 @@
 import toml
 import numpy as np
 from scipy.stats import nbinom, poisson,binom
+from tqdm import tqdm
 
-def generate_duration_matrix(toml_file, prob_cutoff=1e-6):
+def generate_duration_matrix(toml_file, prob_cutoff=1e-20):
     """
     Génère une matrice de distribution de durée à partir d'un fichier TOML.
     
@@ -118,40 +119,48 @@ class HSMM:
         print("\nDuration Matrix:")
         print(self.duration_matrix)
     
-    def generate_sequence(self, min_length, max_length):
-        sequence_length = np.random.randint(min_length, max_length + 1)
-        sequence_states = []
-        sequence_observations = []
-        
-        # Initialisation
-        current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
-        final =False
-        while len(sequence_states) < sequence_length and not final:
-            if len(sequence_states) >= sequence_length:
-                sequence_observations = []
-                sequence_states = []
-                current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
+    def generate_sequence(self,nb_zones = 100):
+            sequence_states = []
+            sequence_observations = []
+            
+            # Initialisation
+            current_state = np.random.choice(len(self.initial_probabilities), p=self.initial_probabilities)
 
-            sequence_states.append(current_state)
-            # Générer la durée pour cet état
-            duration_probs = self.duration_matrix[current_state]
-            lower_bound = int(self.data['occupancy_distributions'][current_state]['bounds'][0])# ajout du décalage de distribution
-            duration = np.random.choice(len(duration_probs), p=duration_probs) + lower_bound
-            print(duration)
-            # Générer les observations pendant la durée
-            for _ in range(duration):
-                if len(sequence_observations) >= sequence_length:
+            for _ in range(nb_zones):
+                sequence_states.append(current_state)
+                # Générer la durée pour cet état
+                duration_probs = self.duration_matrix[current_state]
+                duration_probs /= duration_probs.sum()  # Normalisation
+                lower_bound = int(self.data['occupancy_distributions'][current_state]['bounds'][0])# ajout du décalage de distribution
+                duration = np.random.choice(len(duration_probs), p=duration_probs) + lower_bound
+                
+                # Générer les observations pendant la durée
+                for _ in range(duration):
+                    obs_probs = self.observation_distributions[current_state]
+                    observation = np.random.choice(len(obs_probs), p=obs_probs)
+                    sequence_observations.append(observation)
+                # Transition vers un nouvel état
+                new_state = np.random.choice(len(self.transition_probabilities), p=self.transition_probabilities[current_state])
+                if new_state == 6:  # par exemple, état absorbant
                     break
-                obs_probs = self.observation_distributions[current_state]
-                observation = np.random.choice(len(obs_probs), p=obs_probs)
-                sequence_observations.append(observation)
-            # Transition vers un nouvel état
-            new_state = np.random.choice(len(self.transition_probabilities), p=self.transition_probabilities[current_state])
-            if new_state == 6:  # par exemple, état absorbant
-                final = True
-                break
-            current_state = new_state
+                current_state = new_state
+
+            return sequence_states, sequence_observations
+    def generate_bounded_sequence(self, l_bound, u_bound):
         
+        sequence_states = None
+        sequence_observations = None
+        length = u_bound +1 # initialisation de la longueur de la séquence piur passer la boucle while
+        count = 0 # compteur pour éviter les boucles infinies
+        while length > u_bound or length < l_bound:
+            sequence_states, sequence_observations = self.generate_sequence()
+            count+=1
+            length = len(sequence_observations)
+            if count  == 1000:
+                print("Impossible de générer une séquence dans les bornes demandées (trop d'itérations)")
+                break      
+        # print(sequence_observations) 
+        sequence_observations = [''.join(str(d)) for d in sequence_observations]
         return sequence_states, sequence_observations
 
     def forward_algorithm(self, observations):
@@ -201,17 +210,49 @@ class HSMM:
                 log_alpha[t, j] = somme_d
         
         log_prob = np.logaddexp.reduce(log_alpha[T - 1, :])
-        log_prob = log_prob / T  # Normalisation par la longueur de la séquence
+        log_prob = log_prob   # Normalisation par la longueur de la séquence
         return np.exp(log_prob)
 # Exemple d'utilisation
 if __name__ == "__main__":
-    hsmm_model = HSMM("data/markov/fuji_medium_year_4.toml")
-    # hsmm_model.display_parameters()
-    states, observations = hsmm_model.generate_sequence(10, 20)
-    print("\nGenerated Sequence of States:", states)
-    print("Generated Sequence of Observations:", observations)
+    hsmm_model = HSMM("data/markov/fuji_long_year_1.toml")
+    import pandas as pd
+    df = pd.read_csv("out/datasetcustom_comp_10000.csv")
+    var_names = ["Sequence"]
+    df = df[(df["Observation"] == "LARGE") & (df["Year"] == "Y1")]
+    df = df[var_names]
+    df.head()
+    import pandas as pd
+    df2 = pd.read_csv("out/sequence_analysis_dataset10000.csv")
+    var_names = ["Sequence"]
+    df2 = df2[(df2["Observation"] == "LARGE") & (df2["Year"] == "Y1")]
+    df2 = df2[var_names]
+    df2 = df2.head(1000)
+    print(df2.head())
+    pylist = []
+    for seq_str in df2['Sequence']:
+        seq = [int(char) for char in seq_str]  # Convertit chaque caractère en un entier et l'encapsule dans une liste  # Ajout du marqueur de fin de séquence
+        pylist.append(seq)
+
+    print(pylist[0])
+
+    probs = []
+    for i in tqdm(range(len(pylist))):
+        prob = hsmm_model.forward_algorithm(pylist[i])
+        prob = np.log(prob)/len(pylist[i])
+        probs.append(prob)
     
-    prob_O = hsmm_model.forward_algorithm(observations)
-    print("\nProbability of Observed Sequence:", prob_O)
+    dfprobs = pd.DataFrame(probs,columns=["Probs"])
+    dfprobs.to_csv("out/probs_dataset_sequenceanamysis_perso1000lignes.csv",index=False)
+
+
+
+
+    # hsmm_model.display_parameters()
+    # states, observations = hsmm_model.generate_sequence(10, 20)
+    # print("\nGenerated Sequence of States:", states)
+    # print("Generated Sequence of Observations:", observations)
+    
+    # prob_O = hsmm_model.forward_algorithm(observations)
+    # print("\nProbability of Observed Sequence:", prob_O)
 
 

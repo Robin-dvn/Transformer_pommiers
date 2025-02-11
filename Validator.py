@@ -349,7 +349,14 @@ class Validator:
 
                 
         def analyze_sequences_from_csv(dataset_path, generated_dataset_path, year, type):
-            toml_file = f"data/markov/fuji_{type}_year_{year}.toml"
+            if year == 1 or year ==2:
+                if type == "long":
+                    toml_file = f"data/markov/fuji_{type}_year_1.toml"
+                else:
+                    toml_file = f"data/markov/fuji_{type}_year_3.toml"
+            else:
+                toml_file = f"data/markov/fuji_{type}_year_{year}.toml"
+
             hsmm_model = HSMM(toml_file)
             dic = {"long": "LARGE", "medium": "MEDIUM"}
 
@@ -357,7 +364,9 @@ class Validator:
                 df = pd.read_csv(file)
                 filtered_df = df[(df["Observation"] == dic[type]) & (df["Year"] == f"Y{year}")]
                 probabilities = []
+                # print(filtered_df)
                 for sequence in tqdm(filtered_df["Sequence"]):
+                    # print(sequence)
                     observations = [int(x) for x in str(sequence)]
                     prob_O = hsmm_model.forward_algorithm(observations)
                     probabilities.append(prob_O)
@@ -434,7 +443,7 @@ class Validator:
             return js_distance
         
         
-        for year in range(3, 6):
+        for year in range(1, 6):
             for type in ["long", "medium"]:
                 js_distance = analyze_sequences_from_csv(self.datapath, generated_dataset_path, year, type)
                 
@@ -509,11 +518,11 @@ if __name__ == "__main__":
 
     validator = Validator(model, device, token_to_id=vocab_to_id)
     nb_samples =1100
-    validator.load_data("out/datasetcustom10000.csv") 
-    validator.markov_model_validation("out/generated_datasetcustom10000.csv")
-    validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
-    validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
-    validator.log_prob_distribution_of_sequences("out/generated_datasetcustom10000.csv")
+    validator.load_data("out/datasetcustom_comp_10000.csv") 
+    # validator.markov_model_validation("out/generated_datasetcustom10000.csv")
+    # validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
+    # validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
+    validator.log_prob_distribution_of_sequences("out/sequence_analysis_dataset10000.csv")
     # validator.plot_stats()
     # validator.save_stats("out/stats_2.json")
     # validator.load_stats("out/stats.json")

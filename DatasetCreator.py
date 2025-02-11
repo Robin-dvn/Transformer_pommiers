@@ -154,12 +154,12 @@ class DatasetCreatorCustomHSMM():
             Observation.LARGE,
             Observation.MEDIUM,
         ]
-    def generate_seq(self,starting_state,year,hsmm =None):
+    def generate_seq(self,starting_state,year,hsmm:HSMM =None):
         if starting_state == Observation.FLORAL:
             return [0,0,0,0]
         if starting_state == Observation.SMALL:
             return [0,0,0,0]
-        return hsmm.generate_sequence(self.min_length, self.max_length)[1]
+        return hsmm.generate_bounded_sequence(self.min_length,self.max_length)[1]
 
     def create_data(self,to_CSV = False,rewrite = True):
         start_time = time()
@@ -193,7 +193,7 @@ class DatasetCreatorCustomHSMM():
         print(Fore.MAGENTA + "📂 [INFO] Conversion en CSV..." + Style.RESET_ALL)
         if to_CSV:
             self._output_path.mkdir(exist_ok=True)
-            path = self._output_path/f"datasetcustom{self._number_samples_per_model}.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
+            path = self._output_path/f"datasetcustom_comp_{self._number_samples_per_model}.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
             self.dataset.to_csv(path,index=False)
 
 if __name__ == "__main__":

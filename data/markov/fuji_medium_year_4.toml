@@ -26,7 +26,7 @@ observation_distributions = [
 [[occupancy_distributions]]
 distribution = 'BINOMIAL'
 probability = 0.273065
-bounds = [12.0, 13.0]
+bounds = [1.0, 13.0]
 [[occupancy_distributions]]
 distribution = 'NEGATIVE_BINOMIAL'
 parameter = 1.54532
