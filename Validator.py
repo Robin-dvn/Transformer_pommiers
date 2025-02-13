@@ -3,8 +3,6 @@ import pandas as pd
 from transformer import Transformer
 from tqdm import tqdm
 import plotly.express as px
-
-
 from scipy.stats import gaussian_kde
 from scipy.spatial.distance import jensenshannon
 from HSMM import HSMM
@@ -13,9 +11,39 @@ import plotly.graph_objects as go
 import json
 import os
 from datetime import datetime
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from pathlib import Path  # si besoin d'utiliser pathlib ailleurs
 
-class Validator:
+class Validator: 
+    """
+    Classe Validator pour valider et analyser des séquences générées par un modèle Transformer.
+
+    Attributs:
+        model (Transformer): Instance du modèle Transformer utilisé pour générer des séquences.
+        device (str): Dispositif sur lequel les calculs sont effectués (CPU ou GPU).
+        datapath (str): Chemin vers le fichier de données de référence.
+        token_to_id (dict): Dictionnaire mappant des tokens à leurs identifiants numériques.
+        id_to_token (dict): Dictionnaire inverse mappant des identifiants numériques à leurs tokens.
+        stats (dict): Dictionnaire stockant diverses statistiques calculées lors des validations.
+        show (bool): Booléen indiquant si les graphiques doivent être affichés lors de leur création.
+        df (pd.DataFrame): DataFrame pandas contenant les données de référence ou générées.
+        simu_folder (str): Dossier où les figures générées sont sauvegardées.
+    """
     def __init__(self, model:Transformer, device, token_to_id,datapath= None,show=False ):
+        """
+        Initialise le validateur avec un modèle, un dispositif, et un mappage de tokens.
+
+        Args:
+            model (Transformer): Modèle Transformer utilisé pour générer des séquences.
+            device (str): Dispositif sur lequel les calculs sont effectués (CPU ou GPU).
+            token_to_id (dict): Dictionnaire mappant des tokens à leurs identifiants numériques.
+            datapath (str, optional): Chemin vers le fichier de données de référence.
+            show (bool, optional): Indique si les graphiques doivent être affichés.
+        """
+
         self.model = model
         self.device = device
         self.datapath = datapath
@@ -28,15 +56,34 @@ class Validator:
         os.makedirs(self.simu_folder, exist_ok=True)
         
     def save_figure(self, fig, validation_type, observation, year):
+        """
+        Sauvegarde une figure dans le dossier de simulation.
+
+        Args:
+            fig (plotly.graph_objs._figure.Figure): Figure à sauvegarder.
+            validation_type (str): Type de validation (utilisé pour le nom du fichier).
+            observation (str): Observation associée à la figure.
+            year (int): Année associée à la figure.
+        """
+        
         folder_path = os.path.join(self.simu_folder, validation_type)
         os.makedirs(folder_path, exist_ok=True)
         file_path = os.path.join(folder_path, f"{observation}_{year}_{validation_type}.png")
         fig.write_image(file_path)
     
     def generate_data(self, nb_samples, output_path, end_toks_list):
+        """
+
+        Génère des données en utilisant le modèle Transformer.
+
+        Args:
+            nb_samples (int): Nombre d'échantillons à générer.
+            output_path (str): Chemin où sauvegarder les données générées.
+            end_toks_list (list): Liste des tokens de fin.
+        """
         sequences_generees = []
-        for type in range(8, 12):
-            for year in tqdm(range(12, 17)):
+        for type in tqdm(range(8, 12)):
+            for year in range(12, 17):
                 
                 if nb_samples > 1000:
                     for i in range(0, nb_samples, 1000):
@@ -82,12 +129,25 @@ class Validator:
 
 
     def load_data(self,data_path = None):
+
+        """
+        Charge les données à partir d'un fichier CSV.
+
+        Args:
+            data_path (str, optional): Chemin vers le fichier de données.
+        """
         self.datapath = data_path
         assert self.datapath is not None, "No data path provided"
         self.df = pd.read_csv(self.datapath)
 
 
     def markov_model_validation(self,generated_dataset_path):
+        """
+        Valide les séquences générées en comparant les distributions des états terminaux avec celles du dataset original.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
 
         dataset = self.df
         generated_dataset = pd.read_csv(generated_dataset_path)
@@ -153,7 +213,13 @@ class Validator:
             self.save_figure(fig, "markov_model_validation", observation, year)
 
     def sequence_length_validation(self, generated_dataset_path):
-        from pathlib import Path  # si besoin d'utiliser pathlib ailleurs
+        """
+        Compare la longueur des séquences générées avec celles du dataset original.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
+        
 
         dataset = self.df
         generated_dataset = pd.read_csv(generated_dataset_path)
@@ -227,10 +293,13 @@ class Validator:
             self.save_figure(fig, "sequence_length_validation", observation, year)
 
     def sequence_digit_stats(self, generated_dataset_path):
-        import pandas as pd
-        import plotly.express as px
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
+        """
+        Analyse les statistiques des chiffres dans les séquences générées et les compare avec le dataset original.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
+
 
         # Préparation des données
         dataset = self.df.copy()
@@ -346,6 +415,12 @@ class Validator:
 
 
     def log_prob_distribution_of_sequences(self,generated_dataset_path):
+        """
+        Analyse la distribution des log-probabilités des séquences générées et les compare avec le dataset original.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
 
                 
         def analyze_sequences_from_csv(dataset_path, generated_dataset_path, year, type):
@@ -456,6 +531,9 @@ class Validator:
 
 
     def plot_stats(self):
+        """
+        Affiche un tableau des statistiques calculées.
+        """
         # Préparer les données pour le tableau
         headers = ["Observation", "Year", "Stat Name", "Value"]
         rows = []
@@ -489,6 +567,12 @@ class Validator:
 
 
     def save_stats(self, filepath):
+        """
+        Sauvegarde les statistiques calculées dans un fichier JSON.
+
+        Args:
+            filepath (str): Chemin où sauvegarder le fichier JSON des statistiques.
+        """
         # Convertir les clés en chaînes de caractères
         stats_str_keys = {f"{key[0]}_{key[1]}": value for key, value in self.stats.items()}
         with open(filepath, 'w') as f:
@@ -496,6 +580,12 @@ class Validator:
         print(f"Statistics saved to {filepath}")
 
     def load_stats(self, filepath):
+        """
+        Charge les statistiques à partir d'un fichier JSON.
+
+        Args:
+            filepath (str): Chemin vers le fichier JSON des statistiques.
+        """
         if os.path.exists(filepath):
             with open(filepath, 'r') as f:
                 stats_str_keys = json.load(f)
@@ -511,18 +601,19 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = Transformer(17,12,128,4,0)
-    state_dict = torch.load("10epochavecdormant-4_128_512.pth",map_location=torch.device(device))
+    state_dict = torch.load("12EpochDatasetVerif-4_128_512.pth",map_location=torch.device(device))
     model.load_state_dict(state_dict)
     model.eval().to(device=device)
 
 
     validator = Validator(model, device, token_to_id=vocab_to_id)
-    nb_samples =1100
-    validator.load_data("out/datasetcustom_comp_10000.csv") 
+    nb_samples =10000
+    validator.generate_data(nb_samples, f"out/generated_verified_dataset10000.csv", end_toks_list=[7,8,9,10,11])
+    # validator.load_data("out/datasetcustom_comp_10000.csv") 
     # validator.markov_model_validation("out/generated_datasetcustom10000.csv")
     # validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
     # validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
-    validator.log_prob_distribution_of_sequences("out/sequence_analysis_dataset10000.csv")
+    # validator.log_prob_distribution_of_sequences("out/sequence_analysis_dataset10000.csv")
     # validator.plot_stats()
     # validator.save_stats("out/stats_2.json")
     # validator.load_stats("out/stats.json")

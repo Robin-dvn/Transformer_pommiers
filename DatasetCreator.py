@@ -193,7 +193,7 @@ class DatasetCreatorCustomHSMM():
         print(Fore.MAGENTA + "📂 [INFO] Conversion en CSV..." + Style.RESET_ALL)
         if to_CSV:
             self._output_path.mkdir(exist_ok=True)
-            path = self._output_path/f"datasetcustom_comp_{self._number_samples_per_model}.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
+            path = self._output_path/f"dataset_gen_verif_{self._number_samples_per_model}.csv" if rewrite else self._output_path/f'dataset_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv'
             self.dataset.to_csv(path,index=False)
 
 if __name__ == "__main__":

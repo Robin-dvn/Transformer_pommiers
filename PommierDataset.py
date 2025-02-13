@@ -4,6 +4,10 @@ import torch
 from torch.utils.data import Dataset,DataLoader
 import pandas as pd
 import itertools
+from HSMM import HSMM
+from enums import Observation
+import numpy as np
+from sequences import terminal_fate
 
 class PommierDataset(Dataset):
     def __init__(self, dataset_path, token_to_id=None):
@@ -81,6 +85,84 @@ class PommierDataset(Dataset):
         
         return encoder_input, decoder_input, decoder_target
 
+class DynamicPommierDataset(Dataset):
+    """
+    Dataset dynamique pour un modèle Seq2Seq, qui génère des données à la volée.
+
+    Args:
+        token_to_id (dict): Dictionnaire de mapping token -> ID.
+        num_samples (int): Nombre total d'échantillons à générer.
+        min_length (int): Longueur minimale des séquences générées.
+        max_length (int): Longueur maximale des séquences générées.
+    """
+
+    def __init__(self, token_to_id, num_samples, min_length, max_length):
+        self.token_to_id = token_to_id
+        self.num_samples = num_samples
+        self.min_length = min_length
+        self.max_length = max_length
+        self.mappings = {
+            1: {Observation.LARGE: "data/markov/fuji_long_year_1.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            2: {Observation.LARGE: "data/markov/fuji_long_year_2.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            3: {Observation.LARGE: "data/markov/fuji_long_year_3.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            4: {Observation.LARGE: "data/markov/fuji_long_year_4.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_4.toml"},
+            5: {Observation.LARGE: "data/markov/fuji_long_year_5.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_5.toml"}
+        }
+        self.starting_states = [
+            Observation.SMALL,
+            Observation.FLORAL,
+            Observation.LARGE,
+            Observation.MEDIUM,
+        ]
+
+        # Initialiser tous les modèles HSMM nécessaires
+        self.hsmm_models = {}
+        for year, state_dict in self.mappings.items():
+            for state, toml_file in state_dict.items():
+                self.hsmm_models[(year, state)] = HSMM(toml_file)
+
+    def __len__(self):
+        """Retourne le nombre total d'échantillons."""
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        """
+        Génère un exemple de données à la volée.
+
+        Retourne :
+            - Les 2 premiers tokens comme entrée (encodeur)
+            - Le reste comme cible (décodeur)
+        """
+        # Sélectionner un état de départ et une année aléatoirement
+        starting_state = self.starting_states[np.random.randint(0, len(self.starting_states))]
+        year = np.random.randint(1, 6)
+
+        # Générer une séquence
+        seq = [starting_state.value, f"Y{year}"]
+        hsmm_model = self.hsmm_models.get((year, starting_state))
+        terminal = terminal_fate(year, starting_state) if starting_state != Observation.FLORAL else Observation.DORMANT
+        seq = seq + self.generate_seq(starting_state, year, hsmm_model)
+        seq.append(terminal.value)
+
+        # Convertir les observations en tokens
+        tokens = [str(obs) for obs in seq]
+
+        # Convertir les tokens en IDs
+        token_ids = [self.token_to_id[token] for token in tokens if token in self.token_to_id]
+
+        # Séparation encodeur / décodeur
+        encoder_input = torch.tensor(token_ids[:2], dtype=torch.long)  # 2 premiers tokens
+        decoder_input = torch.tensor([self.token_to_id["<SOS>"]] + token_ids[2:-1], dtype=torch.long)  # Ajout <SOS>
+        decoder_target = torch.tensor(token_ids[2:], dtype=torch.long)
+
+        return encoder_input, decoder_input, decoder_target
+
+    def generate_seq(self, starting_state, year, hsmm=None):
+        """Génère une séquence en fonction de l'état de départ et de l'année."""
+        if starting_state in [Observation.FLORAL, Observation.SMALL]:
+            return [0, 0, 0, 0]
+        return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+
 def collate_fn(batch):
     """Applique du padding pour aligner les séquences dans un batch."""
     enc_inputs, dec_inputs, dec_targets = zip(*batch)
@@ -91,4 +173,23 @@ def collate_fn(batch):
     enc_inputs = pad_sequence(enc_inputs, batch_first=True, padding_value=0)
     return enc_inputs, dec_inputs, dec_targets
 
+# Exemple d'utilisation
+if __name__ == "__main__":
+    # Paramètres
+    vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
+    num_samples = 1000
+    min_length = 4
+    max_length = 70
+    batch_size = 1
 
+    # Créer le dataset dynamique
+    dynamic_dataset = DynamicPommierDataset(vocab_to_id, num_samples, min_length, max_length)
+
+    # Créer un DataLoader
+    dataloader = DataLoader(dynamic_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
+    # Itérer sur le DataLoader
+    for batch in dataloader:
+        enc_inputs, dec_inputs, dec_targets = batch
+        # print(enc_inputs, dec_inputs, dec_targets)
+        # Ici, vous pouvez passer 'batch' à votre modèle pour l'entraînement

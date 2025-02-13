@@ -1,7 +1,7 @@
 from DatasetCreator import DatasetCreator
 from pathlib import Path
 from transformer import Transformer
-from PommierDataset import PommierDataset,collate_fn
+from PommierDataset import PommierDataset,DynamicPommierDataset,collate_fn
 from torch.utils.data import DataLoader,random_split
 from tqdm import tqdm
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     D_MODEL = 128
     LR = 0.00005
     NB_EPOCH = 5
-
+    DYNAMIC = True
     ########## WANDB Project ##############
     wandb.init(
         # set the wandb project where this run will be logged
@@ -47,6 +47,7 @@ if __name__ == "__main__":
         "Dimension model": D_MODEL,
         "Numer of heads": N_HEAD,
         "epochs": NB_EPOCH,
+        "dynamic": DYNAMIC
         }
     )
     ########## DATASET GENERATION #########
@@ -59,14 +60,24 @@ if __name__ == "__main__":
         data_creator.create_data(True,True)
 
    ######### PYTORCH DATASET CREATION ##### 
+    if DYNAMIC:
+        vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
+        dataset = DynamicPommierDataset(vocab_to_id,10000*VAL_SPLIT,4,70)
+        dataset_val = PommierDataset(outpath+ "/datasetcustom10000.csv")
+        train_size = int(VAL_SPLIT*len(dataset))
+        val_size = len(dataset) - train_size
+        _,val_split = random_split(dataset,[train_size, val_size])
+        train_loader = DataLoader(dataset,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
+        val_loader = DataLoader(val_split,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
 
-    dataset = PommierDataset(outpath+ "/datasetcustom10000.csv")
-    train_size = int(VAL_SPLIT*len(dataset))
-    val_size = len(dataset) - train_size
-    train_split,val_split = random_split(dataset,[train_size, val_size])
+    else: 
+        dataset = PommierDataset(outpath+ "/datasetcustom10000.csv")
+        train_size = int(VAL_SPLIT*len(dataset))
+        val_size = len(dataset) - train_size
+        train_split,val_split = random_split(dataset,[train_size, val_size])
 
-    train_loader = DataLoader(train_split,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
-    val_loader = DataLoader(val_split,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
+        train_loader = DataLoader(train_split,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
+        val_loader = DataLoader(val_split,batch_size=BATCH_SIZE,shuffle=True,collate_fn=collate_fn)
 
     ######### MODEL-OPTIMIZER-LOSS#########
 
