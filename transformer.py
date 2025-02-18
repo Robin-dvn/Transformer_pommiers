@@ -31,11 +31,11 @@ class PositionalEncoding(nn.Module):
 class Transformer(nn.Module):
 
 
-    def __init__(self,in_vocab_size,out_vocab_size,d_model,n_head,padding_idx) -> None:
+    def __init__(self,in_vocab_size,out_vocab_size,d_model,n_head,padding_idx,nb_layer= 3) -> None:
         super(Transformer,self).__init__()
         self.embed = nn.Embedding(in_vocab_size,d_model,padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=3,num_encoder_layers=3)
+        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=nb_layer,num_encoder_layers=nb_layer)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
@@ -79,6 +79,54 @@ class Transformer(nn.Module):
                 break
 
         return sequence
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from tqdm import tqdm
+
+
+
+class TransformerDecoderOnly(nn.Module):
+    def __init__(self, vocab_size, d_model, n_head, num_decoder_layers, padding_idx):
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
+        self.posEmbed = PositionalEncoding(d_model)
+        decoder_layer = nn.TransformerDecoderLayer(d_model, n_head, batch_first=True, dropout=0.1)
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
+        self.fc_out = nn.Linear(d_model, vocab_size)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None):
+        t_emb = self.embed(tgt)
+        t_p_emb = self.posEmbed(t_emb)
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
+
+        out_trans = self.decoder(
+            t_p_emb, memory=t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
+        )
+        out = self.fc_out(out_trans)
+        return out
+
+    def generate(self, input_tokens, sos_idx, end_toks_list, max_length=200, temperature=1):
+        self.eval()
+        generated = input_tokens  # Déjà pré-rempli avec le type et l'âge de la branche + <SOS>
+        
+        for _ in tqdm(range(max_length), colour="green"):
+            with torch.no_grad():
+                logits = self(generated)
+                logits = logits[:, -1, :] / temperature
+            probs = F.softmax(logits, dim=-1)
+            next_tokens = torch.multinomial(probs, 1)
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))):
+                next_tokens = torch.multinomial(probs, 1)
+            
+            generated = torch.cat([generated, next_tokens], dim=1)
+
+            if torch.any(torch.isin(next_tokens, torch.tensor(end_toks_list, device=self.device))):
+                break
+
+        return generated
 
 
 

@@ -85,6 +85,80 @@ class PommierDataset(Dataset):
         
         return encoder_input, decoder_input, decoder_target
 
+
+
+class PommierDatasetDecoderOnly(Dataset):
+    def __init__(self, dataset_path, token_to_id=None):
+        """
+        Dataset PyTorch pour un modèle Décodeur-only.
+        
+        Args:
+            dataset_path (str): Chemin du fichier CSV contenant les séquences brutes.
+            token_to_id (dict, optional): Mapping token -> ID. S'il est None, il sera construit.
+        """
+        self.dataset = pd.read_csv(dataset_path)
+        self.vocab = {
+            "LARGE": "L", "MEDIUM": "M", "SMALL": "S", "FLORAL": "F", "DORMANT": "D",
+            "Y1": "Y1", "Y2": "Y2", "Y3": "Y3", "Y4": "Y4", "Y5": "Y5"
+        }
+        
+        # Tokenisation à la volée
+        self.dataset["tokens"] = self.dataset.apply(lambda row: self.tokenize_row(row), axis=1)
+        
+        # Construction du vocabulaire (si non fourni)
+        if token_to_id is None:
+            self.token_to_id = self.build_vocab(self.dataset["tokens"])
+        else:
+            self.token_to_id = token_to_id
+        
+        # Conversion des tokens en IDs
+        self.dataset["token_ids"] = self.dataset["tokens"].apply(
+            lambda tokens: [self.token_to_id[token] for token in tokens]
+        )
+        
+    def tokenize_row(self, row):
+        """Tokenise une ligne du dataset."""
+        tokens = []
+        for item in row:
+            item = str(item).strip()
+            if item in self.vocab:
+                tokens.append(self.vocab[item])
+            elif item.isdigit():
+                tokens.extend(list(item))  # Chaque chiffre devient un token
+        return tokens
+
+    def build_vocab(self, token_lists):
+        """Construit le mapping token -> ID en incluant les tokens spéciaux."""
+        unique_tokens = sorted(set(itertools.chain.from_iterable(token_lists)))
+        # Ajout des tokens spéciaux
+        vocab = {"<PAD>": 0, "<SOS>": 1}
+        vocab.update({token: idx + len(vocab) for idx, token in enumerate(unique_tokens)})
+        return vocab
+    
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        """
+        Pour chaque exemple, on construit :
+          - full_seq = [token1, token2, <SOS>, token3, token4, ...]
+          - input_seq  = full_seq[:-1]
+          - target_seq = full_seq[1:]
+        La perte sera calculée uniquement à partir du token situé après <SOS>.
+        Ici, on ignore les positions 0, 1 et 2.
+        """
+        token_ids = self.dataset.iloc[idx]["token_ids"]
+        full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
+        input_seq = torch.tensor(full_seq[:-1], dtype=torch.long)
+        target_seq = torch.tensor(full_seq[1:], dtype=torch.long)
+        
+        loss_mask = torch.zeros(len(input_seq), dtype=torch.bool)
+        # On calcule la perte seulement à partir du token après <SOS> (index 3 et plus)
+        if len(loss_mask) > 3:
+            loss_mask[3:] = True
+        
+        return input_seq, target_seq, loss_mask
+
 class DynamicPommierDataset(Dataset):
     """
     Dataset dynamique pour un modèle Seq2Seq, qui génère des données à la volée.
@@ -172,6 +246,13 @@ def collate_fn(batch):
     dec_targets = pad_sequence(dec_targets, batch_first=True, padding_value=0)
     enc_inputs = pad_sequence(enc_inputs, batch_first=True, padding_value=0)
     return enc_inputs, dec_inputs, dec_targets
+
+def collate_fn_decoder_only(batch):
+    inputs, targets, masks = zip(*batch)
+    inputs = pad_sequence(inputs, batch_first=True, padding_value=0)   # <PAD> = 0
+    targets = pad_sequence(targets, batch_first=True, padding_value=0)
+    masks = pad_sequence(masks, batch_first=True, padding_value=False)
+    return inputs, targets, masks
 
 # Exemple d'utilisation
 if __name__ == "__main__":
