@@ -100,33 +100,49 @@ class TransformerDecoderOnly(nn.Module):
     def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None):
         t_emb = self.embed(tgt)
         t_p_emb = self.posEmbed(t_emb)
+        # print(t_p_emb)
+
+        # print("Embeddings avant d'entrer dans le décodeur :", t_p_emb)
+
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
+        # print(tgt_mask)
+        memory = torch.zeros(tgt.shape[0], tgt.shape[1], t_p_emb.shape[-1], device=self.device)
 
         out_trans = self.decoder(
-            t_p_emb, memory=t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
+            t_p_emb, memory=memory, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
+        print(out_trans[:,:3,:])
+        out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
+
         out = self.fc_out(out_trans)
         return out
 
-    def generate(self, input_tokens, sos_idx, end_toks_list, max_length=200, temperature=1):
+    def generate_batch(self, input_tokens, sos_idx, device, end_toks_list, max_length=200, temperature=1, batch_size=None):
         self.eval()
-        generated = input_tokens  # Déjà pré-rempli avec le type et l'âge de la branche + <SOS>
-        
-        for _ in tqdm(range(max_length), colour="green"):
+        if batch_size is None:
+            batch_size = input_tokens.size(0)
+        sequence = input_tokens.clone()  # Séquence de départ, par ex. [[type, year], ...]
+        sequence = torch.cat([sequence, torch.full((batch_size, 1), sos_idx, dtype=torch.long, device=device)], dim=1)
+        stop_mask = torch.tensor([False]*batch_size,device = device)
+
+        for i in tqdm(range(max_length),colour="green"):
             with torch.no_grad():
-                logits = self(generated)
-                logits = logits[:, -1, :] / temperature
+                logits = self(sequence)
+                logits = logits[:,-1,:] /temperature
+
             probs = F.softmax(logits, dim=-1)
             next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))):
-                next_tokens = torch.multinomial(probs, 1)
-            
-            generated = torch.cat([generated, next_tokens], dim=1)
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))) :
+                next_tokens = torch.multinomial(probs, 1) 
+            sequence = torch.cat([sequence,next_tokens],dim = 1)
 
-            if torch.any(torch.isin(next_tokens, torch.tensor(end_toks_list, device=self.device))):
+            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 
+
+            stop_mask = stop_mask | has_end_tok.flatten()
+            if stop_mask.all():
                 break
 
-        return generated
+        return sequence
 
 
 

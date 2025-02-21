@@ -1,6 +1,6 @@
 import torch
 import pandas as pd
-from transformer import Transformer
+from transformer import Transformer,TransformerDecoderOnly
 from tqdm import tqdm
 import plotly.express as px
 from scipy.stats import gaussian_kde
@@ -81,7 +81,9 @@ class Validator:
             output_path (str): Chemin où sauvegarder les données générées.
             end_toks_list (list): Liste des tokens de fin.
         """
+
         sequences_generees = []
+        decoder_only = True
         for type in tqdm(range(8, 12)):
             for year in range(12, 17):
                 
@@ -91,12 +93,18 @@ class Validator:
                         start_seq = torch.tensor([[type, year]] * batch_size, device=self.device)
 
                         generated_seq = self.model.generate_batch(start_seq, 1, self.device, end_toks_list, batch_size=int(batch_size))
-                        sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                        if not decoder_only:
+                          sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                        else:
+                          sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 3:]), dim=1).to('cpu').tolist())
                 else:
                     start_seq = torch.tensor([[type, year]] * nb_samples, device=self.device)
 
                     generated_seq = self.model.generate_batch(start_seq, 1, self.device, end_toks_list, batch_size=nb_samples)
-                    sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                    if not decoder_only:
+                      sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                    else:
+                      sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 3:]), dim=1).to('cpu').tolist())
 
       
         print(f"[INFO] Generated {len(sequences_generees)} sequences")
@@ -600,22 +608,22 @@ if __name__ == "__main__":
     id_to_vocab = {v: k for k, v in vocab_to_id.items()}
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = Transformer(17,12,128,4,0)
-    state_dict = torch.load("12EpochDatasetVerif-4_128_512.pth",map_location=torch.device(device))
+    model = TransformerDecoderOnly(17,128,4,3,0)
+    state_dict = torch.load("decoderonly_128_layers_3_40_epochs_markov.pth",map_location=torch.device(device))
     model.load_state_dict(state_dict)
     model.eval().to(device=device)
 
 
     validator = Validator(model, device, token_to_id=vocab_to_id)
-    nb_samples =10000
-    validator.generate_data(nb_samples, f"out/generated_verified_dataset10000.csv", end_toks_list=[7,8,9,10,11])
-    # validator.load_data("out/datasetcustom_comp_10000.csv") 
-    # validator.markov_model_validation("out/generated_datasetcustom10000.csv")
-    # validator.sequence_length_validation("out/generated_datasetcustom10000.csv")
-    # validator.sequence_digit_stats("out/generated_datasetcustom10000.csv")
-    # validator.log_prob_distribution_of_sequences("out/sequence_analysis_dataset10000.csv")
-    # validator.plot_stats()
-    # validator.save_stats("out/stats_2.json")
+    # nb_samples =10000
+    # validator.generate_data(nb_samples, f"out/generated_transformer_128_3_40_10000.csv", end_toks_list=[7,8,9,10,11])
+    validator.load_data("out/markov_python_generated_dataset10000.csv") 
+    validator.markov_model_validation("out/generated_transformer_128_3_40_epochs_markov_10000_cutoff_0.0001.csv")
+    validator.sequence_length_validation("out/generated_transformer_128_3_40_epochs_markov_10000_cutoff_0.0001.csv")
+    validator.sequence_digit_stats("out/generated_transformer_128_3_40_epochs_markov_10000_cutoff_0.0001.csv")
+    validator.log_prob_distribution_of_sequences("out/generated_transformer_128_3_40_epochs_markov_10000_cutoff_0.0001.csv")
+    validator.plot_stats()
+    validator.save_stats("out/stats_decoder_only.json")
     # validator.load_stats("out/stats.json")
     # validator.plot_stats()
     

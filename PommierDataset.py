@@ -151,12 +151,13 @@ class PommierDatasetDecoderOnly(Dataset):
         full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
         input_seq = torch.tensor(full_seq[:-1], dtype=torch.long)
         target_seq = torch.tensor(full_seq[1:], dtype=torch.long)
+        # print(target_seq) 
         
         loss_mask = torch.zeros(len(input_seq), dtype=torch.bool)
         # On calcule la perte seulement à partir du token après <SOS> (index 3 et plus)
         if len(loss_mask) > 3:
-            loss_mask[3:] = True
-        
+            loss_mask[2:] = True
+        # print(loss_mask) 
         return input_seq, target_seq, loss_mask
 
 class DynamicPommierDataset(Dataset):

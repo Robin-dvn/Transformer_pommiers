@@ -77,14 +77,26 @@ if __name__ == "__main__":
         for input_seq, target_seq, loss_mask in tqdm(train_loader, desc=f"Epoch {epoch} - Train"):
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
+            print(input_seq[0])
+            print(target_seq[0])
+            
             loss_mask = loss_mask.to(device)
+            padding_mask = (input_seq == PADDING_IDX).to(torch.float32)
 
-            logits = model(input_seq)  # (batch, seq_len, vocab_size)
-            logits_flat = logits.view(-1, logits.size(-1))
-            target_flat = target_seq.view(-1)
+            logits = model(input_seq,padding_mask)  # (batch, seq_len, vocab_size)
+            logits_trim = logits[:, 2:, :]    # on ignore les 2 premiers tokens
+            targets_trim = target_seq[:, 2:]
+            logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
+            target_flat = targets_trim.reshape(-1)
+            # logits_flat = logits.view(-1, logits.size(-1))
+            # target_flat = target_seq.view(-1)
             mask_flat = loss_mask.view(-1)
+            print(logits_trim[0,4,:])
+            print(targets_trim[0,4])
+            # print(target_flat)
+            # print(logits_flat[mask_flat])
 
-            loss = criterion(logits_flat[mask_flat], target_flat[mask_flat])
+            loss = criterion(logits_flat, target_flat)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -99,11 +111,13 @@ if __name__ == "__main__":
                 input_seq = input_seq.to(device)
                 target_seq = target_seq.to(device)
                 loss_mask = loss_mask.to(device)
-
+                print(loss_mask)
                 logits = model(input_seq)
                 logits_flat = logits.view(-1, logits.size(-1))
+                
                 target_flat = target_seq.view(-1)
                 mask_flat = loss_mask.view(-1)
+                print(target_flat)
 
                 loss = criterion(logits_flat[mask_flat], target_flat[mask_flat])
                 total_eval_loss += loss.item()
