@@ -67,8 +67,13 @@ class Transformer(nn.Module):
                 logits = logits[:,-1,:] /temperature
 
             probs = F.softmax(logits, dim=-1)
+            cutoff = 0.0008
+            probs = torch.where(probs < cutoff, torch.tensor(0.0, device=probs.device), probs)
+
+            # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
+            probs = probs / probs.sum()
             next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))) :
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1,12,13,14,15,16], device=self.device))) :
                 next_tokens = torch.multinomial(probs, 1) 
             sequence = torch.cat([sequence,next_tokens],dim = 1)
 
@@ -111,7 +116,7 @@ class TransformerDecoderOnly(nn.Module):
         out_trans = self.decoder(
             t_p_emb, memory=memory, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
-        print(out_trans[:,:3,:])
+        # print(out_trans[:,:3,:])
         out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
 
         out = self.fc_out(out_trans)
@@ -131,8 +136,13 @@ class TransformerDecoderOnly(nn.Module):
                 logits = logits[:,-1,:] /temperature
 
             probs = F.softmax(logits, dim=-1)
+            cutoff = 0.0008
+            probs = torch.where(probs < cutoff, torch.tensor(0.0, device=probs.device), probs)
+
+            # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
+            probs = probs / probs.sum()
             next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1], device=self.device))) :
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1,12,13,14,15,16], device=self.device))) :
                 next_tokens = torch.multinomial(probs, 1) 
             sequence = torch.cat([sequence,next_tokens],dim = 1)
 
