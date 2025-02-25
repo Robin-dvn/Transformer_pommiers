@@ -27,6 +27,38 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, 
+                 activation=F.relu, layer_norm_eps=1e-5, batch_first=False, 
+                 norm_first=False, bias=True, device=None, dtype=None):
+        super().__init__(d_model, nhead, dim_feedforward, dropout, activation, 
+                         layer_norm_eps, batch_first, norm_first, bias, device, dtype)
+        
+    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None, 
+                tgt_key_padding_mask=None, memory_key_padding_mask=None, 
+                tgt_is_causal=False, memory_is_causal=False):
+        """
+        Version Decoder-Only :
+        - Supprime le Cross-Attention avec `memory`
+        - Garde uniquement le Self-Attention causale et le Feed-Forward Network (FFN)
+        """
+
+        x = tgt
+        if self.norm_first:
+            x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask, tgt_is_causal)
+            # 🚀 Cross-Attention supprimé 🚀
+            x = x + self._ff_block(self.norm2(x))  # FFN
+        else:
+            x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
+            # 🚀 Cross-Attention supprimé 🚀
+            x = self.norm2(x + self._ff_block(x))  # FFN
+        
+        return x
+
 
 class Transformer(nn.Module):
 
@@ -97,12 +129,12 @@ class TransformerDecoderOnly(nn.Module):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        decoder_layer = nn.TransformerDecoderLayer(d_model, n_head, batch_first=True, dropout=0.1)
+        decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
         self.fc_out = nn.Linear(d_model, vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None):
+    def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None,generating= False):
         t_emb = self.embed(tgt)
         t_p_emb = self.posEmbed(t_emb)
         # print(t_p_emb)
@@ -111,13 +143,14 @@ class TransformerDecoderOnly(nn.Module):
 
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
         # print(tgt_mask)
-        memory = torch.zeros(tgt.shape[0], tgt.shape[1], t_p_emb.shape[-1], device=self.device)
+        # memory = torch.zeros(tgt.shape[0], tgt.shape[1], t_p_emb.shape[-1], device=self.device)
 
         out_trans = self.decoder(
-            t_p_emb, memory=memory, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
+            t_p_emb,memory=None, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
         # print(out_trans[:,:3,:])
-        out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
+        
+        if not generating : out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
 
         out = self.fc_out(out_trans)
         return out

@@ -8,7 +8,7 @@ import wandb
 from tqdm import tqdm
 
 # Importer les modules nécessaires (assure-toi que ces fichiers existent)
-from DatasetCreator import DatasetCreator
+
 from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only
 from transformer import TransformerDecoderOnly  # Notre modèle décodeur-only
 
@@ -25,10 +25,11 @@ if __name__ == "__main__":
     VAL_SPLIT = 0.8
     VOCAB_SIZE = 17  # Assure-toi que ça correspond à ton mapping
     PADDING_IDX = 0
-    N_HEAD = 1
+    N_HEAD = 2
     D_MODEL = 16
+    NB_LAYERS = 12
     LR = 5e-5
-    NB_EPOCH = 12
+    NB_EPOCH = 1
     DYNAMIC = False  # Change à True si tu utilises DynamicPommierDataset
 
     wandb.init(
@@ -44,11 +45,12 @@ if __name__ == "__main__":
             "Number of heads": N_HEAD,
             "epochs": NB_EPOCH,
             "dynamic": DYNAMIC,
+            "num_layers": NB_LAYERS
         }
     )
 
 
-    dataset_path = "out/sequence_analysis_generated_dataset10000.csv"
+    dataset_path = "out/markov_python_generated_dataset10000.csv"
     dataset = PommierDatasetDecoderOnly(dataset_path)
 
     train_size = int(VAL_SPLIT * len(dataset))
@@ -59,7 +61,7 @@ if __name__ == "__main__":
     val_loader   = DataLoader(val_split,   batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
 
     model = TransformerDecoderOnly(vocab_size=VOCAB_SIZE, d_model=D_MODEL, n_head=N_HEAD,
-                                   num_decoder_layers=3, padding_idx=PADDING_IDX)
+                                   num_decoder_layers=NB_LAYERS, padding_idx=PADDING_IDX)
     model.to(device)
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -77,24 +79,16 @@ if __name__ == "__main__":
         for input_seq, target_seq, loss_mask in tqdm(train_loader, desc=f"Epoch {epoch} - Train"):
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
-            print(input_seq[0])
-            print(target_seq[0])
+
             
             loss_mask = loss_mask.to(device)
-            padding_mask = (input_seq == PADDING_IDX).to(torch.float32)
+            padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
 
             logits = model(input_seq,padding_mask)  # (batch, seq_len, vocab_size)
             logits_trim = logits[:, 2:, :]    # on ignore les 2 premiers tokens
             targets_trim = target_seq[:, 2:]
             logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
             target_flat = targets_trim.reshape(-1)
-            # logits_flat = logits.view(-1, logits.size(-1))
-            # target_flat = target_seq.view(-1)
-            mask_flat = loss_mask.view(-1)
-            print(logits_trim[0,4,:])
-            print(targets_trim[0,4])
-            # print(target_flat)
-            # print(logits_flat[mask_flat])
 
             loss = criterion(logits_flat, target_flat)
             optimizer.zero_grad()
@@ -111,15 +105,15 @@ if __name__ == "__main__":
                 input_seq = input_seq.to(device)
                 target_seq = target_seq.to(device)
                 loss_mask = loss_mask.to(device)
-                print(loss_mask)
-                logits = model(input_seq)
-                logits_flat = logits.view(-1, logits.size(-1))
-                
-                target_flat = target_seq.view(-1)
-                mask_flat = loss_mask.view(-1)
-                print(target_flat)
+                padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
+                logits = model(input_seq,padding_mask)  # (batch, seq_len, vocab_size)
 
-                loss = criterion(logits_flat[mask_flat], target_flat[mask_flat])
+                logits_trim = logits[:, 2:, :]    # on ignore les 2 premiers tokens
+                targets_trim = target_seq[:, 2:]
+                logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
+                target_flat = targets_trim.reshape(-1)
+
+                loss = criterion(logits_flat, target_flat)
                 total_eval_loss += loss.item()
                 wandb.log({"val_loss": loss.item()})
 
