@@ -11,11 +11,11 @@ from pathlib import Path
 # %%
 
 # Paramètres du modèle
-BATCH_SIZE = 512
+BATCH_SIZE = 10
 SEQ_LEN = 80
-D_MODEL = 128 # Taille d'embedding
+D_MODEL = 32 # Taille d'embedding
 NUM_HEADS = 4
-NUM_LAYERS = 3
+NUM_LAYERS = 90
 VOCAB_SIZE = 17
 PADDING_IDX = 0
 
@@ -46,10 +46,11 @@ flops_forward, params = profile(model, inputs=(decoder_input, None, True))
 # Estimation des FLOPs du backward (≈2.5× forward)
 flops_backward = 2.5 * flops_forward
 flops_total_estimated = flops_forward + flops_backward
-
+numparams = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"THOP - Forward FLOPs: {flops_forward:.2e}")
 print(f"Estimation - Backward FLOPs: {flops_backward:.2e}")
 print(f"Total Estimated FLOPs (Forward + Backward): {flops_total_estimated:.2e}")
+print(f"Nombre de paramètres : {numparams:,}")
 import math
 
 def temps_epoch(nb_samples, batch_size, flops_forward, gpu_flops,
