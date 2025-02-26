@@ -17,7 +17,7 @@ def model_size_mb(model):
     return total_size / (1024 ** 2)
 
 if __name__ == "__main__":
-    exp_name = "Transformer Decoder Only"
+    
     dataset_name = "100 sample de chaque type"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -25,13 +25,13 @@ if __name__ == "__main__":
     VAL_SPLIT = 0.8
     VOCAB_SIZE = 17  # Assure-toi que ça correspond à ton mapping
     PADDING_IDX = 0
-    N_HEAD = 2
-    D_MODEL = 16
-    NB_LAYERS = 12
+    N_HEAD = 8
+    D_MODEL = 64
+    NB_LAYERS = 40
     LR = 5e-5
     NB_EPOCH = 1
     DYNAMIC = False  # Change à True si tu utilises DynamicPommierDataset
-
+    exp_name = f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}"
     wandb.init(
         name=exp_name,
         project="Topologie-Pommiers",
@@ -73,10 +73,10 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), LR)
     criterion = nn.CrossEntropyLoss(ignore_index=PADDING_IDX)
 
-    for epoch in range(NB_EPOCH):
+    for epoch in tqdm(range(NB_EPOCH),colour="green"):
         model.train()
         total_train_loss = 0
-        for input_seq, target_seq, loss_mask in tqdm(train_loader, desc=f"Epoch {epoch} - Train"):
+        for input_seq, target_seq, loss_mask in tqdm(train_loader, desc=f"Epoch {epoch} - Train",colour = "red"):
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         model.eval()
         total_eval_loss = 0
         with torch.no_grad():
-            for input_seq, target_seq, loss_mask in tqdm(val_loader, desc=f"Epoch {epoch} - Val"):
+            for input_seq, target_seq, loss_mask in tqdm(val_loader, desc=f"Epoch {epoch} - Val",colour="yellow"):
                 input_seq = input_seq.to(device)
                 target_seq = target_seq.to(device)
                 loss_mask = loss_mask.to(device)
@@ -121,4 +121,4 @@ if __name__ == "__main__":
         avg_val_loss = total_eval_loss / len(val_loader)
         print(f"[INFO] Epoch {epoch} : train loss = {avg_train_loss:.4f}, val loss = {avg_val_loss:.4f}")
 
-    torch.save(model.state_dict(), "decoderonly_test.pth")
+    torch.save(model.state_dict(), "DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}.pth")

@@ -609,9 +609,9 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model = TransformerDecoderOnly(17,128,4,3,0)
+    model = TransformerDecoderOnly(17,32,4,14,0)
     # model = Transformer(17,12,128,4,0)
-    state_dict = torch.load("decoderonly_128_layers_3_200.pth",map_location=torch.device(device))
+    state_dict = torch.load("DecoderOnly_32_layers_14_epochs_40_gpu_runpod.pth",map_location=torch.device(device))
     model.load_state_dict(state_dict)
     model.eval().to(device=device)
 
@@ -621,12 +621,12 @@ if __name__ == "__main__":
     # nb_samples =10000
     # validator.generate_data(nb_samples, f"out/generated_transformer_128_3_40_10000.csv", end_toks_list=[7,8,9,10,11])
     validator.load_data("out/markov_python_generated_dataset10000.csv") 
-    validator.markov_model_validation("out/generated_decoder_128_3_200_10000.csv")
-    validator.sequence_length_validation("out/generated_decoder_128_3_200_10000.csv")
-    validator.sequence_digit_stats("out/generated_decoder_128_3_200_10000.csv")
-    validator.log_prob_distribution_of_sequences("out/generated_decoder_128_3_200_10000.csv")
+    validator.markov_model_validation("out/generated_transformer_32_14_40_10000.csv")
+    validator.sequence_length_validation("out/generated_transformer_32_14_40_10000.csv")
+    validator.sequence_digit_stats("out/generated_transformer_32_14_40_10000.csv")
+    validator.log_prob_distribution_of_sequences("out/generated_transformer_32_14_40_10000.csv")
     validator.plot_stats()
-    validator.save_stats("out/stats_enc_dec_only.json")
+    validator.save_stats("out/stats_enc_dec_only_runpod_32.json")
     # validator.load_stats("out/stats.json")
     # validator.plot_stats()
     

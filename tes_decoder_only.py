@@ -13,9 +13,9 @@ from pathlib import Path
 # Paramètres du modèle
 BATCH_SIZE = 10
 SEQ_LEN = 80
-D_MODEL = 32 # Taille d'embedding
-NUM_HEADS = 4
-NUM_LAYERS = 90
+D_MODEL = 64 # Taille d'embedding
+NUM_HEADS = 8
+NUM_LAYERS = 40
 VOCAB_SIZE = 17
 PADDING_IDX = 0
 

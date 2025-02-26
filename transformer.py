@@ -165,7 +165,7 @@ class TransformerDecoderOnly(nn.Module):
 
         for i in tqdm(range(max_length),colour="green"):
             with torch.no_grad():
-                logits = self(sequence)
+                logits = self(sequence,generating=True)
                 logits = logits[:,-1,:] /temperature
 
             probs = F.softmax(logits, dim=-1)
