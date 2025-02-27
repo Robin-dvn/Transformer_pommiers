@@ -129,7 +129,7 @@ class TransformerDecoderOnly(nn.Module):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1)
+        decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1,dim_feedforward=4*d_model)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
         self.fc_out = nn.Linear(d_model, vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"

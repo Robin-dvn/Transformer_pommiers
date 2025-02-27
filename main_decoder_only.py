@@ -121,4 +121,4 @@ if __name__ == "__main__":
         avg_val_loss = total_eval_loss / len(val_loader)
         print(f"[INFO] Epoch {epoch} : train loss = {avg_train_loss:.4f}, val loss = {avg_val_loss:.4f}")
 
-    torch.save(model.state_dict(), "DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}.pth")
+    torch.save(model.state_dict(), f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}.pth")
