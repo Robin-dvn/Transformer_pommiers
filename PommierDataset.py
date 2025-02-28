@@ -275,3 +275,86 @@ if __name__ == "__main__":
         enc_inputs, dec_inputs, dec_targets = batch
         # print(enc_inputs, dec_inputs, dec_targets)
         # Ici, vous pouvez passer 'batch' à votre modèle pour l'entraînement
+class DecoderOnlyDynamicPommierDataset(Dataset):
+    """
+    Dataset dynamique pour un modèle Décodeur-only, qui génère des données à la volée.
+
+    Args:
+        token_to_id (dict): Dictionnaire de mapping token -> ID.
+        num_samples (int): Nombre total d'échantillons à générer.
+        min_length (int): Longueur minimale des séquences générées.
+        max_length (int): Longueur maximale des séquences générées.
+    """
+
+    def __init__(self, token_to_id, num_samples, min_length, max_length):
+        self.token_to_id = token_to_id
+        self.num_samples = num_samples
+        self.min_length = min_length
+        self.max_length = max_length
+        self.mappings = {
+            1: {Observation.LARGE: "data/markov/fuji_long_year_1.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            2: {Observation.LARGE: "data/markov/fuji_long_year_2.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            3: {Observation.LARGE: "data/markov/fuji_long_year_3.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_3.toml"},
+            4: {Observation.LARGE: "data/markov/fuji_long_year_4.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_4.toml"},
+            5: {Observation.LARGE: "data/markov/fuji_long_year_5.toml", Observation.MEDIUM: "data/markov/fuji_medium_year_5.toml"}
+        }
+        self.starting_states = [
+            Observation.SMALL,
+            Observation.FLORAL,
+            Observation.LARGE,
+            Observation.MEDIUM,
+        ]
+
+        # Initialiser tous les modèles HSMM nécessaires
+        self.hsmm_models = {}
+        for year, state_dict in self.mappings.items():
+            for state, toml_file in state_dict.items():
+                self.hsmm_models[(year, state)] = HSMM(toml_file)
+
+    def __len__(self):
+        """Retourne le nombre total d'échantillons."""
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        """
+        Génère un exemple de données à la volée.
+
+        Retourne :
+            - full_seq = [token1, token2, <SOS>, token3, token4, ...]
+            - input_seq  = full_seq[:-1]
+            - target_seq = full_seq[1:]
+        """
+        # Sélectionner un état de départ et une année aléatoirement
+        starting_state = self.starting_states[np.random.randint(0, len(self.starting_states))]
+        year = np.random.randint(1, 6)
+
+        # Générer une séquence
+        seq = [starting_state.value, f"Y{year}"]
+        hsmm_model = self.hsmm_models.get((year, starting_state))
+        terminal = terminal_fate(year, starting_state) if starting_state != Observation.FLORAL else Observation.DORMANT
+        seq = seq + self.generate_seq(starting_state, year, hsmm_model)
+        seq.append(terminal.value)
+
+        # Convertir les observations en tokens
+        tokens = [str(obs) for obs in seq]
+
+        # Convertir les tokens en IDs
+        token_ids = [self.token_to_id[token] for token in tokens if token in self.token_to_id]
+
+        # Construire la séquence complète
+        full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
+        input_seq = torch.tensor(full_seq[:-1], dtype=torch.long)
+        target_seq = torch.tensor(full_seq[1:], dtype=torch.long)
+
+        # Créer un masque de perte
+        loss_mask = torch.zeros(len(input_seq), dtype=torch.bool)
+        if len(loss_mask) > 3:
+            loss_mask[2:] = True
+
+        return input_seq, target_seq, loss_mask
+
+    def generate_seq(self, starting_state, year, hsmm=None):
+        """Génère une séquence en fonction de l'état de départ et de l'année."""
+        if starting_state in [Observation.FLORAL, Observation.SMALL]:
+            return [0, 0, 0, 0]
+        return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
