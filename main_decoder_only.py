@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import wandb
 from tqdm import tqdm
 from collections import Counter
+import numpy as np
 
 # Importer les modules nécessaires (assure-toi que ces fichiers existent)
 from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only
@@ -46,6 +47,11 @@ def calculate_class_weights(dataset, vocab_size):
 
 if __name__ == "__main__":
 
+    seed = 42
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    torch.cuda.manual_seed(seed)
+
     dataset_name = "100 sample de chaque type"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -56,8 +62,8 @@ if __name__ == "__main__":
     N_HEAD = 4
     D_MODEL = 32
     NB_LAYERS = 15
-    LR = 5e-5
-    NB_EPOCH = 40
+    LR = 5e-3
+    NB_EPOCH = 110
     DYNAMIC = False  # Change à True si tu utilises DynamicPommierDataset
     exp_name = f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}"
 
@@ -79,9 +85,9 @@ if __name__ == "__main__":
     model.to(device)
 
     # Charger les poids sauvegardés
-    continue_training = False
+    continue_training = True
     if continue_training:
-        checkpoint_path = "path/to/your/saved/model.pth"
+        checkpoint_path = "DecoderOnly_32_layers_15_epochs_100_1024.pth"
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer = optim.Adam(model.parameters(), LR)
@@ -113,11 +119,13 @@ if __name__ == "__main__":
     print(f"Nombre de paramètres : {num_params:,}")
     print(f"Le modèle occupe environ {size_mb:.2f} Mo en mémoire.")
     class_weights = class_weights.to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=PADDING_IDX)
+    criterion_weighted = nn.CrossEntropyLoss(weight=class_weights, ignore_index=PADDING_IDX)
+    criterion_unweighted = nn.CrossEntropyLoss(ignore_index=PADDING_IDX)
 
     for epoch in tqdm(range(NB_EPOCH), colour="green"):
         model.train()
-        total_train_loss = 0
+        total_train_loss_weighted = 0
+        total_train_loss_unweighted = 0
         for input_seq, target_seq, loss_mask in tqdm(train_loader, desc=f"Epoch {epoch} - Train", colour="red"):
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
@@ -125,22 +133,28 @@ if __name__ == "__main__":
             loss_mask = loss_mask.to(device)
             padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
 
-            logits = model(input_seq, padding_mask)  # (batch, seq_len, vocab_sizie)
+            logits = model(input_seq, padding_mask)  # (batch, seq_len, vocab_size)
             logits_trim = logits[:, 2:, :]    # on ignore les 2 premiers tokens
             targets_trim = target_seq[:, 2:]
             logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
             target_flat = targets_trim.reshape(-1)
 
-            loss = criterion(logits_flat, target_flat)
+            loss_unweighted = criterion_unweighted(logits_flat, target_flat)
+            with torch.no_grad():
+
+                loss_weighted = criterion_weighted(logits_flat, target_flat)
+
             optimizer.zero_grad()
-            loss.backward()
+            loss_unweighted.backward()
             optimizer.step()
 
-            total_train_loss += loss.item()
-            wandb.log({"train_loss": loss.item()})
+            total_train_loss_unweighted += loss_unweighted.item()
+            total_train_loss_weighted += loss_weighted.item()
+            wandb.log({"train_loss_unweighted": loss_unweighted.item(), "train_loss_weighted": loss_weighted.item()})
 
         model.eval()
-        total_eval_loss = 0
+        total_eval_loss_weighted = 0
+        total_eval_loss_unweighted = 0
         with torch.no_grad():
             for input_seq, target_seq, loss_mask in tqdm(val_loader, desc=f"Epoch {epoch} - Val", colour="yellow"):
                 input_seq = input_seq.to(device)
@@ -154,18 +168,23 @@ if __name__ == "__main__":
                 logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
                 target_flat = targets_trim.reshape(-1)
 
-                loss = criterion(logits_flat, target_flat)
-                total_eval_loss += loss.item()
-                wandb.log({"val_loss": loss.item()})
+                loss_unweighted = criterion_unweighted(logits_flat, target_flat)
+                loss_weighted = criterion_weighted(logits_flat, target_flat)
 
-        avg_train_loss = total_train_loss / len(train_loader)
-        avg_val_loss = total_eval_loss / len(val_loader)
-        print(f"[INFO] Epoch {epoch} : train loss = {avg_train_loss:.4f}, val loss = {avg_val_loss:.4f}")
+                total_eval_loss_unweighted += loss_unweighted.item()
+                total_eval_loss_weighted += loss_weighted.item()
+                wandb.log({"val_loss": loss_unweighted.item(), "val_loss_weighted": loss_weighted.item()})
+
+        avg_train_loss_unweighted = total_train_loss_unweighted / len(train_loader)
+        avg_train_loss_weighted = total_train_loss_weighted / len(train_loader)
+        avg_val_loss_unweighted = total_eval_loss_unweighted / len(val_loader)
+        avg_val_loss_weighted = total_eval_loss_weighted / len(val_loader)
+        tqdm.write(f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, train loss weighted = {avg_train_loss_weighted:.4f}, val loss unweighted = {avg_val_loss_unweighted:.4f}, val loss weighted = {avg_val_loss_weighted:.4f}")
 
     # Sauvegarder le modèle et l'optimiseur
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict()
-    }, f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}.pth")
+    }, f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}_1024.pth")
 
     wandb.finish()
