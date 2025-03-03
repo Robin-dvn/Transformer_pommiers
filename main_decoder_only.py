@@ -10,7 +10,7 @@ from collections import Counter
 import numpy as np
 
 # Importer les modules nécessaires (assure-toi que ces fichiers existent)
-from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only
+from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only,DecoderOnlyDynamicPommierDataset
 from transformer import TransformerDecoderOnly  # Notre modèle décodeur-only
 
 def model_size_mb(model):
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     dataset_name = "100 sample de chaque type"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    BATCH_SIZE = 512
+    BATCH_SIZE = 10
     VAL_SPLIT = 0.8
     VOCAB_SIZE = 17  # Assure-toi que ça correspond à ton mapping
     PADDING_IDX = 0
@@ -63,29 +63,44 @@ if __name__ == "__main__":
     D_MODEL = 32
     NB_LAYERS = 15
     LR = 5e-3
-    NB_EPOCH = 110
+    NB_EPOCH = 1
     DYNAMIC = False  # Change à True si tu utilises DynamicPommierDataset
-    exp_name = f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}"
+    DIM_FEEDFORWARD = 1024
+    DYNAMIC = True
+    exp_name = f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}_ff_{DIM_FEEDFORWARD}"
 
     dataset_path = "out/markov_python_generated_dataset10000.csv"
-    dataset = PommierDatasetDecoderOnly(dataset_path)
+    static_dataset = PommierDatasetDecoderOnly(dataset_path)
+
+        
+    
 
     # Calculer les poids des classes
-    class_weights = calculate_class_weights(dataset, VOCAB_SIZE)
+    class_weights = calculate_class_weights(static_dataset, VOCAB_SIZE)
 
-    train_size = int(VAL_SPLIT * len(dataset))
-    val_size = len(dataset) - train_size
-    train_split, val_split = random_split(dataset, [train_size, val_size])
+    train_size = int(VAL_SPLIT * len(static_dataset))
+    val_size = len(static_dataset) - train_size
+    train_split, val_split = random_split(static_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_split, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
+    if DYNAMIC:
+        vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
+        dynamic_dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id,10000,4,70)
+        train_loader = DataLoader(dynamic_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
+    else: 
+        train_loader = DataLoader(train_split, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
+
     val_loader   = DataLoader(val_split,   batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
 
-    model = TransformerDecoderOnly(vocab_size=VOCAB_SIZE, d_model=D_MODEL, n_head=N_HEAD,
-                                   num_decoder_layers=NB_LAYERS, padding_idx=PADDING_IDX)
+    model = TransformerDecoderOnly( vocab_size=VOCAB_SIZE,
+                                    d_model=D_MODEL,
+                                    n_head=N_HEAD,
+                                    num_decoder_layers=NB_LAYERS,
+                                    padding_idx=PADDING_IDX,
+                                    dim_feedforward=DIM_FEEDFORWARD )
     model.to(device)
 
     # Charger les poids sauvegardés
-    continue_training = True
+    continue_training = False
     if continue_training:
         checkpoint_path = "DecoderOnly_32_layers_15_epochs_100_1024.pth"
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -111,7 +126,9 @@ if __name__ == "__main__":
             "epochs": NB_EPOCH,
             "dynamic": DYNAMIC,
             "num_layers": NB_LAYERS,
-            "num_params": num_params
+            "num_params": num_params,
+            "dim_feedforward": DIM_FEEDFORWARD,
+            "dynamic": DYNAMIC
         },
         mode="offline"
     )
@@ -130,14 +147,17 @@ if __name__ == "__main__":
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
 
+
             loss_mask = loss_mask.to(device)
             padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
 
             logits = model(input_seq, padding_mask)  # (batch, seq_len, vocab_size)
+
             logits_trim = logits[:, 2:, :]    # on ignore les 2 premiers tokens
             targets_trim = target_seq[:, 2:]
             logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
             target_flat = targets_trim.reshape(-1)
+
 
             loss_unweighted = criterion_unweighted(logits_flat, target_flat)
             with torch.no_grad():
@@ -185,6 +205,6 @@ if __name__ == "__main__":
     torch.save({
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict()
-    }, f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}_1024.pth")
+    }, f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}_ff_{DIM_FEEDFORWARD}.pth")
 
     wandb.finish()

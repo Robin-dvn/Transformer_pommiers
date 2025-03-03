@@ -8,6 +8,7 @@ from HSMM import HSMM
 from enums import Observation
 import numpy as np
 from sequences import terminal_fate
+from torch.utils.data import random_split
 
 class PommierDataset(Dataset):
     def __init__(self, dataset_path, token_to_id=None):
@@ -358,3 +359,21 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
         return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+
+
+if __name__ == "__main__":
+    VAL_SPLIT = 0.8
+    vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
+    static_dataset = PommierDatasetDecoderOnly("out/markov_python_generated_dataset10000.csv")
+    dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id, 10000, 4, 70)
+    train_size = int(VAL_SPLIT * len(static_dataset))
+    val_size = len(static_dataset) - train_size
+    _, val_split = random_split(static_dataset, [train_size, val_size])
+    val_loader = DataLoader(val_split, batch_size=2, shuffle=True, collate_fn=collate_fn_decoder_only)
+    train_loader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate_fn_decoder_only)
+
+    for batch in train_loader:
+        inputs, targets, masks = batch
+        # Ici, vous pouvez passer 'batch' à votre modèle pour l'entraînement
+        print(inputs, targets)
+        break

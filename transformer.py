@@ -63,11 +63,11 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
 class Transformer(nn.Module):
 
 
-    def __init__(self,in_vocab_size,out_vocab_size,d_model,n_head,padding_idx,nb_layer= 3) -> None:
+    def __init__(self,in_vocab_size,out_vocab_size,d_model,n_head,padding_idx,nb_layer= 3,dim_feedforward=2048) -> None:
         super(Transformer,self).__init__()
         self.embed = nn.Embedding(in_vocab_size,d_model,padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=nb_layer,num_encoder_layers=nb_layer)
+        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=nb_layer,num_encoder_layers=nb_layer,dim_feedforward=dim_feedforward)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
@@ -125,11 +125,11 @@ from tqdm import tqdm
 
 
 class TransformerDecoderOnly(nn.Module):
-    def __init__(self, vocab_size, d_model, n_head, num_decoder_layers, padding_idx):
+    def __init__(self, vocab_size, d_model, n_head, num_decoder_layers, padding_idx,dim_feedforward=1024):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1,dim_feedforward=1024)
+        decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1,dim_feedforward=dim_feedforward)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
         self.fc_out = nn.Linear(d_model, vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
