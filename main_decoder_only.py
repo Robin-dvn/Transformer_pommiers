@@ -55,7 +55,7 @@ if __name__ == "__main__":
     dataset_name = "100 sample de chaque type"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    BATCH_SIZE = 10
+    BATCH_SIZE = 512
     VAL_SPLIT = 0.8
     VOCAB_SIZE = 17  # Assure-toi que ça correspond à ton mapping
     PADDING_IDX = 0
@@ -63,8 +63,7 @@ if __name__ == "__main__":
     D_MODEL = 32
     NB_LAYERS = 15
     LR = 5e-3
-    NB_EPOCH = 1
-    DYNAMIC = False  # Change à True si tu utilises DynamicPommierDataset
+    NB_EPOCH = 50 # Change à True si tu utilises DynamicPommierDataset
     DIM_FEEDFORWARD = 1024
     DYNAMIC = True
     exp_name = f"DecoderOnly_{D_MODEL}_layers_{NB_LAYERS}_epochs_{NB_EPOCH}_ff_{DIM_FEEDFORWARD}"
@@ -84,7 +83,7 @@ if __name__ == "__main__":
 
     if DYNAMIC:
         vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
-        dynamic_dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id,10000,4,70)
+        dynamic_dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id,20000,4,70)
         train_loader = DataLoader(dynamic_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
     else: 
         train_loader = DataLoader(train_split, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_decoder_only)
@@ -100,7 +99,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # Charger les poids sauvegardés
-    continue_training = False
+    continue_training = True
     if continue_training:
         checkpoint_path = "DecoderOnly_32_layers_15_epochs_100_1024.pth"
         checkpoint = torch.load(checkpoint_path, map_location=device)
