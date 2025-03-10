@@ -7,8 +7,9 @@ import itertools
 from HSMM import HSMM
 from enums import Observation
 import numpy as np
-from sequences import terminal_fate
+from sequences import terminal_fate, _generate_random_draw_sequence
 from torch.utils.data import random_split
+
 
 class PommierDataset(Dataset):
     def __init__(self, dataset_path, token_to_id=None):
@@ -237,6 +238,8 @@ class DynamicPommierDataset(Dataset):
         """Génère une séquence en fonction de l'état de départ et de l'année."""
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
+        elif year == 2 and starting_state == Observation.LARGE:
+            return _generate_random_draw_sequence()
         return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
 
 def collate_fn(batch):
@@ -358,6 +361,8 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
         """Génère une séquence en fonction de l'état de départ et de l'année."""
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
+        elif year == 2 and starting_state == Observation.LARGE:
+            return _generate_random_draw_sequence()
         return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
 
 
