@@ -15,7 +15,7 @@ BATCH_SIZE = 10
 SEQ_LEN = 80
 D_MODEL = 32 # Taille d'embedding
 NUM_HEADS = 4
-NUM_LAYERS = 35
+NUM_LAYERS =45
 VOCAB_SIZE = 17
 PADDING_IDX = 0
 
@@ -23,13 +23,15 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # %%
 
+
 # Initialisation du modèle sur GPU
 model = TransformerDecoderOnly(
     vocab_size=VOCAB_SIZE, 
     d_model=D_MODEL, 
     n_head=NUM_HEADS, 
     num_decoder_layers=NUM_LAYERS, 
-    padding_idx=PADDING_IDX
+    padding_idx=PADDING_IDX,
+    dim_feedforward=256
 ).to(device)
 
 # %%
