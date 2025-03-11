@@ -239,8 +239,13 @@ class DynamicPommierDataset(Dataset):
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
         elif year == 2 and starting_state == Observation.LARGE:
-            return _generate_random_draw_sequence()
-        return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+            seq = _generate_random_draw_sequence()
+            seq = [str(el[1]) for el in seq]
+            # print(seq)
+            return seq
+        seq = hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+        # print(seq )
+        return seq
 
 def collate_fn(batch):
     """Applique du padding pour aligner les séquences dans un batch."""
@@ -362,8 +367,13 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
         elif year == 2 and starting_state == Observation.LARGE:
-            return _generate_random_draw_sequence()
-        return hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+            seq = _generate_random_draw_sequence()
+            seq = [str(el[1]) for el in seq]
+            # print(seq)
+            return seq
+        seq = hsmm.generate_bounded_sequence(self.min_length, self.max_length)[1]
+        # print(seq )
+        return seq
 
 
 if __name__ == "__main__":
