@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
             total_train_loss_unweighted += loss_unweighted.item()
             total_train_loss_weighted += loss_weighted.item()
-            wandb.log({"train_loss": loss_unweighted.item(), "train_loss_weighted": loss_weighted.item()})
+            
 
         model.eval()
         total_eval_loss_weighted = 0
@@ -192,12 +192,14 @@ if __name__ == "__main__":
 
                 total_eval_loss_unweighted += loss_unweighted.item()
                 total_eval_loss_weighted += loss_weighted.item()
-                wandb.log({"val_loss": loss_unweighted.item(), "val_loss_weighted": loss_weighted.item()})
+        
 
         avg_train_loss_unweighted = total_train_loss_unweighted / len(train_loader)
         avg_train_loss_weighted = total_train_loss_weighted / len(train_loader)
         avg_val_loss_unweighted = total_eval_loss_unweighted / len(val_loader)
         avg_val_loss_weighted = total_eval_loss_weighted / len(val_loader)
+        wandb.log({"train_loss_epochs": avg_train_loss_unweighted, "train_loss_weighted_epochs": avg_train_loss_weighted})
+        wandb.log({"val_loss_epochs": avg_val_loss_unweighted, "val_loss_weighted_epochs": avg_val_loss_weighted})
         tqdm.write(f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, train loss weighted = {avg_train_loss_weighted:.4f}, val loss unweighted = {avg_val_loss_unweighted:.4f}, val loss weighted = {avg_val_loss_weighted:.4f}")
 
     # Sauvegarder le modèle et l'optimiseur
