@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
             total_train_loss_unweighted += loss_unweighted.item()
             total_train_loss_weighted += loss_weighted.item()
-            wandb.log({"train_loss_unweighted": loss_unweighted.item(), "train_loss_weighted": loss_weighted.item()})
+            wandb.log({"train_loss": loss_unweighted.item(), "train_loss_weighted": loss_weighted.item()})
 
         model.eval()
         total_eval_loss_weighted = 0
