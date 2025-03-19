@@ -67,7 +67,7 @@ class Transformer(nn.Module):
         super(Transformer,self).__init__()
         self.embed = nn.Embedding(in_vocab_size,d_model,padding_idx=padding_idx)
         self.posEmbed = PositionalEncoding(d_model)
-        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=nb_layer,num_encoder_layers=nb_layer,dim_feedforward=dim_feedforward)
+        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=12,num_encoder_layers=3,dim_feedforward=1024)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
@@ -175,8 +175,19 @@ class TransformerDecoderOnly(nn.Module):
             # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
             probs = probs / probs.sum()
             next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1,12,13,14,15,16], device=self.device))) :
+
+            if i == 0: 
+                nb_max = 0
+                while torch.any(torch.isin(next_tokens, torch.tensor([0,1,7,8,9,10,11,12,13,14,15,16], device=self.device))) :
+                    next_tokens = torch.multinomial(probs, 1)
+                    nb_max+=1
+                    if nb_max > 10:
+                        
+                        next_tokens = torch.tensor([[2]]*batch_size,device = device)
+            
+            while torch.any(torch.isin(next_tokens, torch.tensor([0,1,12,13,14,15,16], device=self.device))) :
                 next_tokens = torch.multinomial(probs, 1) 
+   
             sequence = torch.cat([sequence,next_tokens],dim = 1)
 
             has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 

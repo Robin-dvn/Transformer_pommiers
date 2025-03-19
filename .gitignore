@@ -5,3 +5,10 @@ pommiers
 *.pth
 assets/
 311pommiers/
+out
+poids
+stats
+experiments/
+singularity_workspace/.ipynb_checkpoints/
+singularity_workspace/TmpDemos/
+singularity_workspace/notebook/

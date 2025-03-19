@@ -16,7 +16,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path  # si besoin d'utiliser pathlib ailleurs
-
+import subprocess
+from time import time
 class Validator: 
     """
     Classe Validator pour valider et analyser des séquences générées par un modèle Transformer.
@@ -77,7 +78,7 @@ class Validator:
         Génère des données en utilisant le modèle Transformer.
 
         Args:
-            nb_samples (int): Nombre d'échantillons à générer.
+            nb_samples (int): Nombre d'échantillons à générer par couple (type,année).
             output_path (str): Chemin où sauvegarder les données générées.
             end_toks_list (list): Liste des tokens de fin.
         """
@@ -147,6 +148,7 @@ class Validator:
         self.datapath = data_path
         assert self.datapath is not None, "No data path provided"
         self.df = pd.read_csv(self.datapath)
+        
 
 
     def markov_model_validation(self,generated_dataset_path):
@@ -193,17 +195,20 @@ class Validator:
             # Calculer l'erreur en pourcentage pour chaque Terminal Fate
             terminal_fates = counts['Terminal Fate'].unique()
             percentage_errors = {}
+            total_bad_fate = 0
             for fate in terminal_fates:
                 dataset_count = counts[(counts['Terminal Fate'] == fate) & (counts['Source'] == 'Dataset')]['Count'].values[0]
                 generated_count = counts[(counts['Terminal Fate'] == fate) & (counts['Source'] == 'Generated Dataset')]['Count'].values[0]
-                percentage_error = abs(dataset_count - generated_count) / dataset_count * 100
-                percentage_errors[fate] = percentage_error
+                if abs(dataset_count - generated_count) >0:
+                    total_bad_fate += abs(dataset_count - generated_count)
+            percentage_error =  total_bad_fate/ 10000 * 100
+  
 
             # Mettre à jour le dictionnaire stats
             self.stats[(observation, year)] = {
-                "percentage_errors": percentage_errors
+                "percentage_error": percentage_error
             } if (observation, year) not in self.stats else self.stats[(observation, year)].update({
-                "percentage_errors": percentage_errors
+                "percentage_error": percentage_error
             })
             # print(self.stats)
             # Créer le graphique avec des couleurs explicites
@@ -249,7 +254,8 @@ class Validator:
                             stats.loc[stats['Source'] == 'Generated Dataset', 'mean'].values[0])
             std_error = abs(stats.loc[stats['Source'] == 'Dataset', 'std'].values[0] -
                             stats.loc[stats['Source'] == 'Generated Dataset', 'std'].values[0])
-            self.stats[(observation, year)] = {"mean_error": mean_error, "std_error": std_error}
+            self.stats[(observation, year)]["mean_error"] = mean_error
+            self.stats[(observation, year)]["std_error"] = std_error 
 
             y_max = stats['mean'].max() + 10 * stats['std'].max()
             y_min = stats['mean'].min() - 10 * stats['std'].max()
@@ -342,10 +348,9 @@ class Validator:
 
             # Mise à jour de self.stats
             key = (observation, year)
-            self.stats[key] = {
-                "digit_mean_errors": mean_errors.to_dict(),
-                "digit_std_errors": var_errors.to_dict()
-            }
+            self.stats[key]["digit_mean_errors"] = mean_errors.to_dict() 
+            self.stats[key]["digit_std_errors"] = var_errors.to_dict()
+
 
             # Construction d'un DataFrame de stats et calcul des erreurs par ligne
             stats_df = pd.DataFrame({
@@ -445,6 +450,7 @@ class Validator:
 
             def process_file(file):
                 df = pd.read_csv(file)
+
                 filtered_df = df[(df["Observation"] == dic[type]) & (df["Year"] == f"Y{year}")]
                 probabilities = []
                 # print(filtered_df)
@@ -529,15 +535,48 @@ class Validator:
         for year in range(1, 6):
             for type in ["long", "medium"]:
                 js_distance = analyze_sequences_from_csv(self.datapath, generated_dataset_path, year, type)
-                
-                if (year, type) not in self.stats:
-                    self.stats[(year, type)] = {
+                key = ("LARGE",f"Y{year}") if type == "long" else ("MEDIUM",f"Y{year}")
+                if key not in self.stats:
+
+                    self.stats[key] = {
                         "js_distance": js_distance
                     }
                 else:
-                    self.stats[(year, type)]["js_distance"] = js_distance 
+                    self.stats[key]["js_distance"] = js_distance 
 
+    
+    def compute_metrics(self,data):
+        # Pour chaque dataset, on accumule les valeurs
+        mean_errors = []
+        std_errors = []
+        percentage_errors = []
+        js_distances = []
+        digit_mean_vals = []
+        digit_std_vals = []
+        rmse_errors = []
+        
+        for d in data.values():
+            mean_errors.append(d["mean_error"])
+            std_errors.append(d["std_error"])
+            percentage_errors.append(d["percentage_error"])
+            if "js_distance" in d:
+                js_distances.append(d["js_distance"])
+            digit_mean_vals.extend(d["digit_mean_errors"].values())
+            digit_std_vals.extend(d["digit_std_errors"].values())
+            if "rmse_error" in d:
+                rmse_errors.append(d["rmse_error"])
 
+        
+        metrics = {
+            "mean_error": (np.mean(mean_errors), np.std(mean_errors)),
+            "std_error": (np.mean(std_errors), np.std(std_errors)),
+            "percentage_error": (np.mean(percentage_errors), np.std(percentage_errors)),
+            "js_distance": (np.mean(js_distances), np.std(js_distances)) if js_distances else (None, None),
+            "digit_mean_errors": (np.mean(digit_mean_vals), np.std(digit_mean_vals)),
+            "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
+            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if rmse_errors else (None, None)
+        }
+        return metrics
     def plot_stats(self):
         """
         Affiche un tableau des statistiques calculées.
@@ -572,7 +611,62 @@ class Validator:
 
         fig.update_layout(title="Statistics Table")
         if self.show: fig.show()
+    
+    def plot_stats_graph(self,filepaths):
+        # Calculer les métriques pour chaque fichier
+        metrics_by_file = {}
+        for filepath in filepaths:
+            data = json.loads(Path(filepath).read_text())
+            metrics_by_file[Path(filepath).name] = self.compute_metrics(data)
+        
+        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors","rmse_error"]
+        title_list = [
+            "Moyenne des erreurs<br>de moyenne de longueurs",
+            "Moyenne des erreurs<br>de std de longueurs",
+            "Pourcentage de terminal<br>fate mal prédit",
+            "Distance de Jensen Shannon<br>entre les deux distributions",
+            "Moyenne des erreurs de moyenne<br>d'occurences de chaque chiffre",
+            "Moyenne des erreurs de std<br>d'occurences de chaque chiffre",
+            "Moyenne des RMSE entre les paramètres<br>des matrices de transitions"
+        ]
 
+        file_names = list(metrics_by_file.keys())
+        
+        # Assigner une couleur fixe par fichier
+        colors = px.colors.qualitative.Plotly
+        color_map = {fname: colors[i % len(colors)] for i, fname in enumerate(file_names)}
+        
+        # Création d'une grille 2x3 pour les subplots
+        fig = make_subplots(rows=2, cols=4, subplot_titles=title_list)
+ 
+        # Pour chaque métrique, ajouter un trace par fichier avec sa couleur
+        for i, metric in enumerate(metric_list):
+            row = i // 4 + 1
+            col = i % 4 + 1
+            for fname in file_names:
+                m, s = metrics_by_file[fname][metric]
+                m = 0 if m is None else m
+                s = 0 if s is None else s
+                fig.add_trace(
+                    go.Bar(
+                        x=[fname[-9:-5]],
+                        y=[m],
+                        error_y=dict(
+                            type="data",
+                            array=[s],
+                            visible=True,
+                            thickness=1,
+                            width=1
+                        ),
+                        marker_color=color_map[fname],
+                        name=fname,
+                        showlegend=False
+                    ),
+                    row=row, col=col
+                )
+        
+        fig.update_layout(title_text="Comparaison des métriques par fichier", barmode="group")
+        fig.show()
 
     def save_stats(self, filepath):
         """
@@ -584,10 +678,11 @@ class Validator:
         # Convertir les clés en chaînes de caractères
         stats_str_keys = {f"{key[0]}_{key[1]}": value for key, value in self.stats.items()}
         with open(filepath, 'w') as f:
-            json.dump(stats_str_keys, f, indent=4)
+            json.dump(stats_str_keys, f, indent=4,sort_keys=True)
         print(f"Statistics saved to {filepath}")
 
     def load_stats(self, filepath):
+
         """
         Charge les statistiques à partir d'un fichier JSON.
 
@@ -602,34 +697,95 @@ class Validator:
             print(f"Statistics loaded from {filepath}")
         else:
             print(f"File {filepath} does not exist")
+
+    def rmse_and_log_probability_sequence_metric_sequence_analysis(self,generated_dataset_path,stats_file_path,validation_folder_path,windows = True):
+        # Chemin du script Bash stocké dans Windows
+        if windows:
+            script_path = "/mnt/c/Users/Robin/Documents/Stage pommiers/Transformer_pommiers/script.sh"
+            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/") 
+            generated_dataset_path_arg = str("/Transformer_pommiers/" / validation_folder_path / generated_dataset_path).replace("\\","/")
+            validation_folder_path_arg = str("/Transformer_pommiers/" / validation_folder_path).replace("\\","/") +"/"
+            subprocess.run(["wsl", "bash", script_path,stat_file_path_arg,generated_dataset_path_arg,validation_folder_path_arg])
+        else:
+            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/") 
+            generated_dataset_path_arg = str("/Transformer_pommiers/" / validation_folder_path / generated_dataset_path).replace("\\","/")
+            validation_folder_path_arg = str("/Transformer_pommiers/" / validation_folder_path).replace("\\","/") +"/"
+
+            script = [
+                "singularity",
+                "exec", "-e", "-B", "./:/Transformer_pommiers", "../VPlants2.simg", "bash",
+                "/Transformer_pommiers/singularity_workspace/script.sh",
+                stat_file_path_arg,
+                generated_dataset_path_arg,
+                validation_folder_path_arg
+            ]
+            subprocess.run(script)
+    
+    def validation_pipeline(self,generated_dataset_path,validation_folder_path,stats_dataset_path,windows = True,show = False):
+        self.show = show
+        self.load_data("out/markov_python_generated_dataset10000.csv")
+        print("[INFO] Validation markov model au file: ", validation_folder_path / generated_dataset_path)
+        self.markov_model_validation(validation_folder_path / generated_dataset_path)
+        print("[INFO] Validation sequence length")
+        self.sequence_length_validation(validation_folder_path / generated_dataset_path)
+        print("[INFO] Validation sequence digit stats")
+        self.sequence_digit_stats(validation_folder_path / generated_dataset_path)
+
+        self.plot_stats()
+        self.save_stats(validation_folder_path / stats_dataset_path)
+        print("[INFO] Validation log prob distribution of sequences")
+        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,validation_folder_path,windows)
+        self.plot_stats_graph([validation_folder_path / stats_dataset_path])
+
+        
 if __name__ == "__main__":
 
     vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16} 
     id_to_vocab = {v: k for k, v in vocab_to_id.items()}
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    couples_ffl = [(256,45)]
+    # couples_ffl = [(2048,8)]
+    for ff,layers in tqdm(couples_ffl,colour="green"):
 
-    model = TransformerDecoderOnly(17,32,4,15,0)
-    # model = Transformer(17,12,128,4,0)
-    state_dict = torch.load("DecoderOnly_32_layers_15_epochs_400_ff_1024_bon_dynamic.pth",map_location=torch.device(device))
-    model.load_state_dict(state_dict["model_state_dict"])
-    model.eval().to(device=device)
+        model = TransformerDecoderOnly(17,32,4,layers,0,dim_feedforward=ff)
+        # model = Transformer(17,12,32,4,0)
+        state_dict = torch.load(f"poids/DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.pth",map_location=torch.device(device))
+        model.load_state_dict(state_dict["model_state_dict"])
+        # model.load_state_dict(state_dict)
+        model.eval().to(device=device)
 
 
-    validator = Validator(model, device, token_to_id=vocab_to_id)
-    validator.show = True
-    # nb_samples =10000
-    # validator.generate_data(nb_samples, f"out/generated_transformer_128_3_40_10000.csv", end_toks_list=[7,8,9,10,11])
-    validator.load_data("out/markov_python_generated_dataset10000.csv") 
-    validator.markov_model_validation("out/generated_DecoderOnly_32_layers_15_epochs_400_ff_1024_dynamic.csv")
-    validator.sequence_length_validation("out/generated_DecoderOnly_32_layers_15_epochs_400_ff_1024_dynamic.csv")
-    validator.sequence_digit_stats("out/generated_DecoderOnly_32_layers_15_epochs_400_ff_1024_dynamic.csv")
-    validator.log_prob_distribution_of_sequences("out/generated_DecoderOnly_32_layers_15_epochs_400_ff_1024_dynamic.csv")
-    validator.plot_stats()
-    validator.save_stats("out/stats_generated_DecoderOnly_32_layers_15_epochs_400_ff_1024_dynamic.json")
-    # validator.load_stats("out/stats.json")
-    # validator.plot_stats()
-    
+        validator = Validator(model, device, token_to_id=vocab_to_id)
+        # st = time()
+        # validator.validation_pipeline("generated_DecoderOnly_32_layers_45_epochs_200_ff_256.csv","experiments/test_validation/","stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json")
+        # et = time()
+        # print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
-    # validator.sequence_digit_stats("out/generated_dataset10000.csv")
-    # validator.generate_data(nb_samples, f"out/generated_dataset{nb_samples}.csv", end_toks_list=[7,8,9,10,11]sqi<tab>ii
+        # validator.show = Tru
+        # nb_samples =10000
+        # validator.generate_data(nb_samples, f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv", end_toks_list=[7,8,9,10,11])
+        # validator.load_data("out/markov_python_generated_dataset10000.csv") 
+        # print("[INFO] Validation markov model")
+        # validator.markov_model_validation(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
+        # print("[INFO] Validation sequence length")
+        # validator.sequence_length_validation(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
+        # print("[INFO] Validation sequence digit stats")
+        # validator.sequence_digit_stats(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
+        # print("[INFO] Validation log prob distribution of sequences")
+        # validator.log_prob_distribution_of_sequences(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
+        # validator.plot_stats()
+        # validator.save_stats(f"stats/stats_generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.json")
+        # validator.load_stats("stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json")
+        # validator.plot_stats()
+        # validator.plot_stats_graph([
+        #     "stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json",
+        #     "stats/stats_generated_DecoderOnly_32_layers_8_epochs_200_ff_2048.json",
+        #     "stats/stats_generated_DecoderOnly_32_layers_27_epochs_200_ff_512.json",
+        #     "stats/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"
+        #     ])
+
+        validator.plot_stats_graph(["experiments/test_validation/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"])
+
+        # validator.sequence_digit_stats("out/generated_dataset10000.csv")
+        # validator.generate_data(nb_samples, f"out/generated_dataset{nb_samples}.csv", end_toks_list=[7,8,9,10,11]sqi<tab>iii
