@@ -382,13 +382,13 @@ def train_generate_validate_pipeline(config_dict):
     # Initialize the validator
     validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
     st = time()
-    validator.generate_data(100, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
+    validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
     
     et = time()
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("out/markov_python_generated_dataset10000.csv")
     st = time()
-    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json")
+    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json",windows = False)
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
