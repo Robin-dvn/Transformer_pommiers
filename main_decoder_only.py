@@ -47,8 +47,8 @@ if __name__ == "__main__":
     #Essai de early stopping
     config_early = base_config.copy()
     config_early["scheduler"] = {
-        "name": "cyclical",
-        "params": {"base_lr": 1e-4, "max_lr": 1e-2, "step_size_up": 200}
+        "name": "None",
+        "params": {}
     }
     config_early["early_stopping"] = {
         "name": "patience",

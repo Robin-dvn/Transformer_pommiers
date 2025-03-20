@@ -195,7 +195,7 @@ def train_decoder_only(config_dict):
         project="Topologie-Pommiers",
         config={
             "learning_rate": lr,
-            "val_split": val_split,
+            "val_split": config_dict['val_split'],
             "architecture": exp_name,
             "dataset": "100 sample de chaque type",
             "batch_size": batch_size,
