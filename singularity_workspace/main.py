@@ -74,8 +74,11 @@ def rmse(y_true, y_pred):
 
 
 class Validator():
-    def __init__(self):
+    def __init__(self,validation_folder_path):
         self.stats = {}
+        self.folder_path = validation_folder_path
+        os.mkdir(self.folder_path+"hsmm")
+        os.mkdir(self.folder_path+"probs")
 
     def save_stats(self, filepath):
         """
@@ -107,7 +110,7 @@ class Validator():
         else:
             print("File {0} does not exist".format(filepath))
     
-    def rmse_markov_model_parameters(self, generated_dataset_path,validation_folder_path):
+    def rmse_markov_model_parameters(self, generated_dataset_path):
 
 
         
@@ -146,11 +149,11 @@ class Validator():
                 return None
             # hsmc_markov_python_guide = Estimate(ms_generated_by_markov_python,"HIDDEN_SEMI-MARKOV",hmsc_init_guide,Nbiteration= 1000) 
 
-            print(validation_folder_path+"spread_transformer_type_{0}_year_{1}.csv".format(type,year))
-            hsmc_transformer_guide.spreadsheet_write(validation_folder_path+"spread_transformer_type_{0}_year_{1}.csv".format(type,year))
-            # hsmc_markov_python_guide.spreadsheet_write(validation_folder_path+"spread_markov_python_type_{0}_year_{1}.csv".format(type,year))
+            print(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year))
+            hsmc_transformer_guide.spreadsheet_write(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year))
+            # hsmc_markov_python_guide.spreadsheet_write(self.folder_path+"spread_markov_python_type_{0}_year_{1}.csv".format(type,year))
             vec_markov = process_csv_estimation("data/guide/"+"spread_markov_python_type_{0}_year_{1}.csv".format(type,year))
-            vec_transformer = process_csv_estimation(validation_folder_path+"spread_transformer_type_{0}_year_{1}.csv".format(type,year)) 
+            vec_transformer = process_csv_estimation(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year)) 
 
             return rmse(vec_markov,vec_transformer)
         
@@ -189,7 +192,7 @@ class Validator():
             hsmm_model = HiddenSemiMarkov(toml_file)
             dic = {"long": "LARGE", "medium": "MEDIUM"}
 
-            def process_file(file):
+            def process_file(file,save = True,output_csv = None):
                 df = pd.read_csv(file)
                 filtered_df = df[(df["Observation"] == dic[type]) & (df["Year"] == "Y{0}".format(year))]
                 filtered_df = filtered_df[["Sequence"]]
@@ -209,12 +212,20 @@ class Validator():
                     # print(p)
                     liste_probs_normal.append(p)
                 # log_probabilities = np.log(liste_probs_normal)
+                if save == True:
+                    # Enregistrer les log-probabilites dans un fichier CSV
+                    log_prob_df = pd.DataFrame(liste_probs_normal, columns=["LogProb"])
+                    log_prob_df.to_csv(self.folder_path + output_csv, index=False)
                 return liste_probs_normal
 
-            log_prob_dataset = process_file(dataset_path)
-            # print(log_prob_dataset)
-            log_prob_generated = process_file(generated_dataset_path)
-            # print(log_prob_generated)
+            # log_prob_dataset = process_file(dataset_path,output_csv="data/markov/log_prob_markov_python_dataset_{0}_y{1}.csv".format(type,year))
+
+            log_prob_df = pd.read_csv("data/markov/log_prob_markov_python_dataset_{0}_y{1}.csv".format(type, year))
+            log_prob_dataset = log_prob_df["LogProb"].tolist()
+            log_prob_df.to_csv(self.folder_path + "probs/log_prob_markov_python_dataset_{0}_y{1}.csv".format(type,year), index=False)
+
+            log_prob_generated = process_file(generated_dataset_path,output_csv="probs/log_generated_dataset_{0}_y{1}.csv".format(type,year))
+ 
             min_log_prob = min(min(log_prob_dataset), min(log_prob_generated))
             max_log_prob = max(max(log_prob_dataset), max(log_prob_generated))
             bin_width = (max_log_prob - min_log_prob) / 1000.0
@@ -282,10 +293,10 @@ if __name__ == "__main__":
     json_path = sys.argv[1]
     generated_dataset_path = sys.argv[2]
     validation_folder_path = sys.argv[3]
-    validator = Validator()
+    validator = Validator(validation_folder_path)
     validator.load_stats(json_path)
     st = time()
-    validator.rmse_markov_model_parameters(generated_dataset_path,validation_folder_path)
+    validator.rmse_markov_model_parameters(generated_dataset_path)
     et = time()
     print("Time taken to calculate rmse: ", et-st)
     st = time()

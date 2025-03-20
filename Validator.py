@@ -33,7 +33,7 @@ class Validator:
         df (pd.DataFrame): DataFrame pandas contenant les données de référence ou générées.
         simu_folder (str): Dossier où les figures générées sont sauvegardées.
     """
-    def __init__(self, model:Transformer, device, token_to_id,datapath= None,show=False ):
+    def __init__(self, model:Transformer, device, token_to_id,validation_folder_path,datapath= None,show=False ):
         """
         Initialise le validateur avec un modèle, un dispositif, et un mappage de tokens.
 
@@ -48,13 +48,12 @@ class Validator:
         self.model = model
         self.device = device
         self.datapath = datapath
+        self.validation_folder_path = validation_folder_path
         self.token_to_id = token_to_id
         self.id_to_token = {v: k for k, v in token_to_id.items()}
         self.stats = {}
         self.show = show
         self.df = pd.DataFrame(columns=["Observation", "Year", "Sequence", "Terminal Fate"])
-        self.simu_folder = os.path.join("assets", datetime.now().strftime("%Y%m%d_%H%M%S"))
-        os.makedirs(self.simu_folder, exist_ok=True)
         
     def save_figure(self, fig, validation_type, observation, year):
         """
@@ -66,10 +65,9 @@ class Validator:
             observation (str): Observation associée à la figure.
             year (int): Année associée à la figure.
         """
-        
-        folder_path = os.path.join(self.simu_folder, validation_type)
+        folder_path = self.validation_folder_path / "assets" / validation_type
         os.makedirs(folder_path, exist_ok=True)
-        file_path = os.path.join(folder_path, f"{observation}_{year}_{validation_type}.png")
+        file_path = folder_path / f"{observation}_{year}_{validation_type}.png"
         fig.write_image(file_path)
     
     def generate_data(self, nb_samples, output_path, end_toks_list):
@@ -427,7 +425,7 @@ class Validator:
             self.save_figure(fig, "sequence_digit_stats", observation, year)
 
 
-    def log_prob_distribution_of_sequences(self,generated_dataset_path):
+    def log_prob_distribution_of_sequences(self,generated_dataset_path,from_csv = False):
         """
         Analyse la distribution des log-probabilités des séquences générées et les compare avec le dataset original.
 
@@ -461,9 +459,14 @@ class Validator:
                     probabilities.append(prob_O)
                 log_probabilities = np.log(probabilities)
                 return log_probabilities
-
-            log_probabilities_dataset = process_file(dataset_path)
-            log_probabilities_generated = process_file(generated_dataset_path)
+            if not from_csv:
+                log_probabilities_dataset = process_file(dataset_path)
+                log_probabilities_generated = process_file(generated_dataset_path)
+            else:
+                log_prob_df = pd.read_csv(self.validation_folder_path / f"probs/log_prob_markov_python_dataset_{type}_y{year}.csv")
+                log_probabilities_dataset = log_prob_df["LogProb"].tolist()
+                log_prob_generated_df = pd.read_csv(self.validation_folder_path / f"probs/log_generated_dataset_{type}_y{year}.csv")
+                log_probabilities_generated = log_prob_generated_df["LogProb"].tolist()
 
             min_log_prob = min(min(log_probabilities_dataset), min(log_probabilities_generated))
             max_log_prob = max(max(log_probabilities_dataset), max(log_probabilities_generated))
@@ -721,21 +724,22 @@ class Validator:
             ]
             subprocess.run(script)
     
-    def validation_pipeline(self,generated_dataset_path,validation_folder_path,stats_dataset_path,windows = True,show = False):
+    def validation_pipeline(self,generated_dataset_path,stats_dataset_path,windows = True,show = False):
         self.show = show
         self.load_data("out/markov_python_generated_dataset10000.csv")
-        print("[INFO] Validation markov model au file: ", validation_folder_path / generated_dataset_path)
-        self.markov_model_validation(validation_folder_path / generated_dataset_path)
+        print("[INFO] Validation markov model au file: ", self.validation_folder_path / generated_dataset_path)
+        self.markov_model_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence length")
-        self.sequence_length_validation(validation_folder_path / generated_dataset_path)
+        self.sequence_length_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence digit stats")
-        self.sequence_digit_stats(validation_folder_path / generated_dataset_path)
-
-        self.plot_stats()
-        self.save_stats(validation_folder_path / stats_dataset_path)
+        self.sequence_digit_stats(self.validation_folder_path / generated_dataset_path)
+ 
+        self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences")
-        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,validation_folder_path,windows)
-        self.plot_stats_graph([validation_folder_path / stats_dataset_path])
+        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
+        self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
+        self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
+        self.plot_stats()
 
         
 if __name__ == "__main__":
