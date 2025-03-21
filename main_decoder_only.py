@@ -16,6 +16,14 @@ if __name__ == "__main__":
         'nb_epoch': 200,
         'dim_feedforward': 1024,
         'dynamic': True,
+        'scheduler': {
+            'name': 'None',
+            'params': {}
+        },
+        'early_stopping': {
+            'name': 'None',
+            'params': {}
+        },
         'continue_training': False,
         'checkpoint_path': None,
         'auto_precision': False  # Nouveau paramètre pour activer/désactiver torch.cuda.amp
