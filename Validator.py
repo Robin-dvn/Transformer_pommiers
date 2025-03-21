@@ -652,7 +652,7 @@ class Validator:
                 s = 0 if s is None else s
                 fig.add_trace(
                     go.Bar(
-                        x=[fname[-9:-5]],
+                        x=["Dim FFL = "+fname[-9:-5]],
                         y=[m],
                         error_y=dict(
                             type="data",
@@ -668,7 +668,7 @@ class Validator:
                     row=row, col=col
                 )
         
-        fig.update_layout(title_text="Comparaison des métriques par fichier", barmode="group")
+        fig.update_layout(title=dict(text = "Synthèse des Metrics de validation à nombre de paramètres égaux  pour des FeedForward Layer différentes",x=0.5,font=dict(family="Arial", size=20, color="black", weight="bold")), barmode="group")
         fig.show()
 
     def save_stats(self, filepath):
@@ -760,7 +760,7 @@ if __name__ == "__main__":
         model.eval().to(device=device)
 
 
-        validator = Validator(model, device, token_to_id=vocab_to_id)
+        validator = Validator(model, device, token_to_id=vocab_to_id,validation_folder_path="ici")
         # st = time()
         # validator.validation_pipeline("generated_DecoderOnly_32_layers_45_epochs_200_ff_256.csv","experiments/test_validation/","stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json")
         # et = time()
@@ -782,14 +782,14 @@ if __name__ == "__main__":
         # validator.save_stats(f"stats/stats_generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.json")
         # validator.load_stats("stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json")
         # validator.plot_stats()
-        # validator.plot_stats_graph([
-        #     "stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json",
-        #     "stats/stats_generated_DecoderOnly_32_layers_8_epochs_200_ff_2048.json",
-        #     "stats/stats_generated_DecoderOnly_32_layers_27_epochs_200_ff_512.json",
-        #     "stats/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"
-        #     ])
+        validator.plot_stats_graph([
+            "stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json",
+            "stats/stats_generated_DecoderOnly_32_layers_8_epochs_200_ff_2048.json",
+            "stats/stats_generated_DecoderOnly_32_layers_27_epochs_200_ff_512.json",
+            "stats/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"
+            ])
 
-        validator.plot_stats_graph(["experiments/test_validation/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"])
+        # validator.plot_stats_graph(["experiments/test_validation/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"])
 
         # validator.sequence_digit_stats("out/generated_dataset10000.csv")
         # validator.generate_data(nb_samples, f"out/generated_dataset{nb_samples}.csv", end_toks_list=[7,8,9,10,11]sqi<tab>iii
