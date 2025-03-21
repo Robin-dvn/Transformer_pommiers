@@ -11,7 +11,7 @@ if __name__ == "__main__":
         'padding_idx': 0,
         'n_head': 4,
         'd_model': 32,
-        'nb_layers': 1,
+        'nb_layers': 15,
         'lr': 5e-5,
         'nb_epoch': 200,
         'dim_feedforward': 1024,
@@ -29,8 +29,8 @@ if __name__ == "__main__":
         'auto_precision': False  # Nouveau paramètre pour activer/désactiver torch.cuda.amp
     }
     #Essai baseline
-    print("=== Essai baseline ===")
-    validator_baseline = train_generate_validate_pipeline(base_config)
+    # print("=== Essai baseline ===")
+    # validator_baseline = train_generate_validate_pipeline(base_config)
 
     # Essai cyclical learning rate
     config_cyclical = base_config.copy()
@@ -38,7 +38,7 @@ if __name__ == "__main__":
         "name": "cyclical",
         "params": {"base_lr": 5e-7, "max_lr": 5e-3, "step_size_up": 782}
     }
-    config_cyclical["early_stopping"] = {"name": "None", "params": {}}
+
     print("=== Essai cyclical learning rate ===")
     validator_cyclical = train_generate_validate_pipeline(config_cyclical)
 
@@ -48,7 +48,6 @@ if __name__ == "__main__":
         "name": "ReduceOnPlatau",
         "params": {"mode": "min", "factor": 0.1, "patience": 3}
     }
-    config_plateau["early_stopping"] = {"name": "None", "params": {}}
     print("=== Essai de scheduler learning rate (ReduceOnPlatau) ===")
     validator_plateau = train_generate_validate_pipeline(config_plateau)
 

@@ -23,6 +23,11 @@ from tqdm  import tqdm
 from time import time
 import math
 
+class ValidationError(Exception):
+    """Exception raised for errors in the validation process."""
+    pass
+
+
 def process_csv_estimation(csvpath):
     # Charger le fichier
     file_path = csvpath
@@ -65,7 +70,11 @@ def process_csv_estimation(csvpath):
 def rmse(y_true, y_pred):
     """Calcule la Root Mean Squared Error (RMSE) entre deux listes."""
     if len(y_true) != len(y_pred):
-        raise ValueError("Les listes doivent avoir la meme longueur.")
+        print(y_true)
+        print(y_pred)
+        print(len(y_true))
+        print(len(y_pred))
+        raise ValidationError("L'inference du modele de markov a donne des resultats incoherents (taille du vecteur parametres)")
     
     error_squared = [(y_t - y_p) ** 2 for y_t, y_p in zip(y_true, y_pred)]
     mean_error = sum(error_squared) / len(y_true)
@@ -146,7 +155,8 @@ class Validator():
             try:
                 hsmc_transformer_guide = Estimate(ms_generated_by_transformer,"HIDDEN_SEMI-MARKOV",hmsc_init_guide,Nbiteration= 1000)
             except:
-                return None
+                raise ValidationError("L'inference du modele de markov a  echoue")
+
             # hsmc_markov_python_guide = Estimate(ms_generated_by_markov_python,"HIDDEN_SEMI-MARKOV",hmsc_init_guide,Nbiteration= 1000) 
 
             print(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year))
@@ -159,7 +169,11 @@ class Validator():
         
         for year in tqdm(range(1, 6)):
             for type in ["long", "medium"]:
-                rmse_error = analyze_markov_from_csv("markov_python_generated_dataset10000.csv", generated_dataset_path, year, type)
+                try:
+                    rmse_error = analyze_markov_from_csv("markov_python_generated_dataset10000.csv", generated_dataset_path, year, type)
+                except ValidationError as e:
+                    print(e.message)
+                    rmse_error = None
                 key = "LARGE_Y{0}".format(year) if type == "long" else "MEDIUM_Y{0}".format(year)
                 if rmse_error is not None:
                     if key not in self.stats:

@@ -19,6 +19,7 @@ from EarlyStopping import EarlyStopping
 from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only, DecoderOnlyDynamicPommierDataset
 from transformer import TransformerDecoderOnly  # Notre modèle décodeur-only
 from Validator import Validator
+from ValidationError import ValidationError
 
 def model_size_mb(model):
     total_size = sum(p.numel() * p.element_size() for p in model.parameters() if p.requires_grad)
@@ -382,8 +383,11 @@ def train_generate_validate_pipeline(config_dict):
     # Initialize the validator
     validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
     st = time()
-    validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
-    
+    try:
+        validator.generate_data(100, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
+    except ValidationError as e:
+        print(f"[ERROR] {e}")
+        return None
     et = time()
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("out/markov_python_generated_dataset10000.csv")

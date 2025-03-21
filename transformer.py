@@ -1,5 +1,6 @@
 
 from PommierDataset import PommierDataset,collate_fn
+from ValidationError import ValidationError
 from torch.utils.data import DataLoader
 from torch import Tensor
 from tqdm import tqdm
@@ -8,6 +9,8 @@ import math
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
+
+
 
 
 class PositionalEncoding(nn.Module):
@@ -86,17 +89,15 @@ class Transformer(nn.Module):
 
 
 
-    def generate_batch(self,enc_input,sos_idx,device,end_toks_list,temperature = 1,max_length = 200,batch_size = 1):
-
-
+    def generate_batch(self, enc_input, sos_idx, device, end_toks_list, temperature=1, max_length=200, batch_size=1):
         self.eval()
-        sequence = torch.tensor([[sos_idx]]*batch_size,device = device)
-        stop_mask = torch.tensor([False]*batch_size,device = device)
+        sequence = torch.tensor([[sos_idx]] * batch_size, device=device)
+        stop_mask = torch.tensor([False] * batch_size, device=device)
 
-        for i in tqdm(range(max_length),colour="green"):
+        for i in tqdm(range(max_length), colour="green"):
             with torch.no_grad():
-                logits = self(enc_input,sequence)
-                logits = logits[:,-1,:] /temperature
+                logits = self(enc_input, sequence)
+                logits = logits[:, -1, :] / temperature
 
             probs = F.softmax(logits, dim=-1)
             cutoff = 0.0008
@@ -105,17 +106,22 @@ class Transformer(nn.Module):
             # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
             probs = probs / probs.sum()
             next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1,12,13,14,15,16], device=self.device))) :
-                next_tokens = torch.multinomial(probs, 1) 
-            sequence = torch.cat([sequence,next_tokens],dim = 1)
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
+                next_tokens = torch.multinomial(probs, 1)
+            sequence = torch.cat([sequence, next_tokens], dim=1)
 
-            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 
-
+            has_end_tok = torch.isin(next_tokens, torch.tensor(end_toks_list, device=self.device))
             stop_mask = stop_mask | has_end_tok.flatten()
             if stop_mask.all():
                 break
 
+        # Si max_length est atteint (aucun token de fin n'a été généré), ajoute une colonne contenant le token 7
+        if sequence.shape[1] == max_length + 1:
+            col7 = torch.full((batch_size, 1), 7, device=device)
+            sequence = torch.cat([sequence, col7], dim=1)
+
         return sequence
+
 import math
 import torch
 import torch.nn as nn
@@ -155,48 +161,60 @@ class TransformerDecoderOnly(nn.Module):
         out = self.fc_out(out_trans)
         return out
 
-    def generate_batch(self, input_tokens, sos_idx, device, end_toks_list, max_length=200, temperature=1, batch_size=None):
+    def generate_batch(self, input_tokens, sos_idx, device, end_toks_list, max_length=100, temperature=1, batch_size=None):
         self.eval()
         if batch_size is None:
             batch_size = input_tokens.size(0)
-        sequence = input_tokens.clone()  # Séquence de départ, par ex. [[type, year], ...]
+        # Séquence de départ : tokens initiaux + token SOS
+        sequence = input_tokens.clone()
         sequence = torch.cat([sequence, torch.full((batch_size, 1), sos_idx, dtype=torch.long, device=device)], dim=1)
-        stop_mask = torch.tensor([False]*batch_size,device = device)
+        stop_mask = torch.tensor([False] * batch_size, device=device)
 
-        for i in tqdm(range(max_length),colour="green"):
+        for i in tqdm(range(max_length), colour="green"):
             with torch.no_grad():
-                logits = self(sequence,generating=True)
-                logits = logits[:,-1,:] /temperature
+                logits = self(sequence, generating=True)
+                logits = logits[:, -1, :] / temperature
 
             probs = F.softmax(logits, dim=-1)
             cutoff = 0.0008
             probs = torch.where(probs < cutoff, torch.tensor(0.0, device=probs.device), probs)
+            probs = probs / probs.sum()  # Renormalisation
 
-            # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
-            probs = probs / probs.sum()
             next_tokens = torch.multinomial(probs, 1)
 
-            if i == 0: 
+            if i == 0:
                 nb_max = 0
-                while torch.any(torch.isin(next_tokens, torch.tensor([0,1,7,8,9,10,11,12,13,14,15,16], device=self.device))) :
+                while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], device=self.device))):
                     next_tokens = torch.multinomial(probs, 1)
-                    nb_max+=1
+                    nb_max += 1
                     if nb_max > 10:
-                        
-                        next_tokens = torch.tensor([[2]]*batch_size,device = device)
-            
-            while torch.any(torch.isin(next_tokens, torch.tensor([0,1,12,13,14,15,16], device=self.device))) :
-                next_tokens = torch.multinomial(probs, 1) 
-   
-            sequence = torch.cat([sequence,next_tokens],dim = 1)
+                        raise ValidationError("Trop de tokens non valides générés en début de séquence.")
+                        # next_tokens = torch.tensor([[2]] * batch_size, device=device)
+                        # break
+            nb_max = 0
+            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
+                
+                next_tokens = torch.multinomial(probs, 1)
+                nb_max += 1
+                if nb_max > 10:
+                    raise ValidationError("Trop de tokens non valides générés durant la génération.")
 
-            has_end_tok =torch.isin(next_tokens,torch.tensor(end_toks_list,device=self.device)) 
 
+            sequence = torch.cat([sequence, next_tokens], dim=1)
+            has_end_tok = torch.isin(next_tokens, torch.tensor(end_toks_list, device=self.device))
             stop_mask = stop_mask | has_end_tok.flatten()
             if stop_mask.all():
                 break
 
+        # Si max_length est atteint, ajoute une colonne contenant le token 7
+        initial_length = input_tokens.size(1) + 1  # tokens initiaux + token SOS
+        if sequence.shape[1] == initial_length + max_length:
+            col7 = torch.full((batch_size, 1), 7, device=device, dtype=torch.long)
+            sequence = torch.cat([sequence, col7], dim=1)
+            # raise ValidationError("Max_length atteint, ajout d'un token 7.")
+
         return sequence
+
 
 
 
