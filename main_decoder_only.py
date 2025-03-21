@@ -36,7 +36,7 @@ if __name__ == "__main__":
     config_cyclical = base_config.copy()
     config_cyclical["scheduler"] = {
         "name": "cyclical",
-        "params": {"base_lr": 5e-7, "max_lr": 5e-3, "step_size_up": 782}
+        "params": {"base_lr": 5e-8, "max_lr": 5e-5, "step_size_up": 782}
     }
 
     print("=== Essai cyclical learning rate ===")

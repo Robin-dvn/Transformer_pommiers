@@ -384,7 +384,7 @@ def train_generate_validate_pipeline(config_dict):
     validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
     st = time()
     try:
-        validator.generate_data(100, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
+        validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
     except ValidationError as e:
         print(f"[ERROR] {e}")
         return None
@@ -396,6 +396,6 @@ def train_generate_validate_pipeline(config_dict):
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
-    validator.plot_stats_graph([experiment_path / "generated_dataset_validation_stats.json"])
+    # validator.plot_stats_graph([experiment_path / "generated_dataset_validation_stats.json"])
 
     return validator
