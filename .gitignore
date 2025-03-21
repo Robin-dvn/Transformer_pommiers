@@ -13,3 +13,4 @@ singularity_workspace/.ipynb_checkpoints/
 singularity_workspace/TmpDemos/
 singularity_workspace/notebook/
 venv31012/
+go1.21.0.linux-amd64.tar.gz
