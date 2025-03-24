@@ -41,30 +41,45 @@ def process_csv_estimation(csvpath):
 
     # Extraire les probabilites initiales
     initial_probabilities = lines[initial_prob_index].split("\t")
-    # print(initial_probabilities)
+    
     # Extraire les probabilites de transition
     transition_values = []
     i = transition_prob_index
     while i < len(lines) and not lines[i].startswith("transient"):  # Tant qu'on ne tombe pas sur une nouvelle section
         transition_values.extend(lines[i].split("\t"))
         i += 1
-    # print(transition_values)
+
     # Extraire les distributions d'observation
     observation_values = []
     for line in lines:
         if line.startswith("OUTPUT") and not line.startswith("OUTPUT_PROCESS"):
             observation_values.extend(line.split("\t")[2:])  # Ignorer "OUTPUT"
-    # print(observation_values)
+
+    # Extraire les paramètres de durée
+    duration_params = []
+    for i, line in enumerate(lines):
+        if "OCCUPANCY_DISTRIBUTION" in line:
+            # La ligne suivante contient les paramètres
+            if i + 1 < len(lines):
+                params = lines[i + 1].split("\t")
+                # Extraire les paramètres pertinents
+                for param in params:
+                    if param.startswith("PARAMETER") or param.startswith("PROBABILITY"):
+                        duration_params.append(float(param.split()[1]))
+                    elif param.startswith("INF_BOUND"):
+                        duration_params.append(float(param.split()[1]))
+                    elif param.startswith("SUP_BOUND"):
+                        duration_params.append(float(param.split()[1]))
+
     # Fusionner toutes les valeurs dans un seul vecteur
-    all_probabilities = initial_probabilities + transition_values[:-1] + observation_values
+    all_probabilities = initial_probabilities + transition_values[:-1] + observation_values + duration_params
     numeric_probabilities = []
     for value in all_probabilities:
         try:
             numeric_probabilities.append(float(value))  # Convertit en float si possible
         except ValueError:
             pass  # Ignore les valeurs non convertibles
-    # Afficher les 10 premieres valeurs pour verification
-#     print(numeric_probabilities)
+
     return numeric_probabilities
 
 def rmse(y_true, y_pred):
@@ -81,6 +96,21 @@ def rmse(y_true, y_pred):
     
     return math.sqrt(mean_error)
 
+def chi_squared(y_true, y_pred):
+    """
+    Calcule le Chi-deux entre deux distributions de probabilités.
+    Cette métrique est particulièrement adaptée pour comparer des distributions de probabilités.
+    """
+    if len(y_true) != len(y_pred):
+        raise ValidationError("L'inference du modele de markov a donne des resultats incoherents (taille du vecteur parametres)")
+    
+    # Éviter la division par zéro en ajoutant un petit epsilon
+    epsilon = 1e-10
+    
+    # Calcul du Chi-deux
+    chi_squared = sum((y_t - y_p) ** 2 / (y_t + epsilon) for y_t, y_p in zip(y_true, y_pred))
+    
+    return chi_squared
 
 class Validator():
     def __init__(self,validation_folder_path):
@@ -165,21 +195,30 @@ class Validator():
             vec_markov = process_csv_estimation("data/guide/"+"spread_markov_python_type_{0}_year_{1}.csv".format(type,year))
             vec_transformer = process_csv_estimation(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year)) 
 
-            return rmse(vec_markov,vec_transformer)
+            # Calculer les deux métriques
+            rmse_error = rmse(vec_markov, vec_transformer)
+            chi_squared_error = chi_squared(vec_markov, vec_transformer)
+
+            return rmse_error, chi_squared_error
         
         for year in tqdm(range(1, 6)):
             for type in ["long", "medium"]:
                 try:
-                    rmse_error = analyze_markov_from_csv("markov_python_generated_dataset10000.csv", generated_dataset_path, year, type)
+                    rmse_error, chi_squared_error = analyze_markov_from_csv("markov_python_generated_dataset10000.csv", generated_dataset_path, year, type)
                 except ValidationError as e:
                     print(e.message)
                     rmse_error = None
+                    chi_squared_error = None
                 key = "LARGE_Y{0}".format(year) if type == "long" else "MEDIUM_Y{0}".format(year)
                 if rmse_error is not None:
                     if key not in self.stats:
-                        self.stats[key] = {"rmse_error": rmse_error}
+                        self.stats[key] = {
+                            "rmse_error": rmse_error,
+                            "chi_squared_error": chi_squared_error
+                        }
                     else:
                         self.stats[key]["rmse_error"] = rmse_error
+                        self.stats[key]["chi_squared_error"] = chi_squared_error
 
     def log_prob_distribution_of_sequences(self, generated_dataset_path):
         """

@@ -294,7 +294,6 @@ class Validator:
                 ]
             )
 
-
             if self.show: fig.show()
             fig.update_layout(
                 title_text=f'Sequence length for {observation} in {year}',
@@ -303,6 +302,110 @@ class Validator:
                 margin=dict(t=100, b=100, l=50, r=50)
             )
             self.save_figure(fig, "sequence_length_validation", observation, year)
+
+    def sequence_length_distribution_validation(self, generated_dataset_path):
+        """
+        Analyse la distribution des longueurs de séquences en utilisant des histogrammes et la distance de Jensen-Shannon.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
+        dataset = self.df
+        generated_dataset = pd.read_csv(generated_dataset_path)
+
+        dataset['Source'] = 'Dataset'
+        generated_dataset['Source'] = 'Generated Dataset'
+        combined_dataset = pd.concat([dataset, generated_dataset])
+        unique_pairs = combined_dataset[['Observation', 'Year']].drop_duplicates()
+
+        for _, row in unique_pairs.iterrows():
+            observation = row['Observation']
+            year = row['Year']
+            subset = combined_dataset[(combined_dataset['Observation'] == observation) &
+                                    (combined_dataset['Year'] == year)].copy()
+            subset['Sequence Length'] = subset['Sequence'].apply(len)
+
+            # Calcul de la distance de Jensen-Shannon pour les longueurs de séquences
+            dataset_lengths = subset[subset['Source'] == 'Dataset']['Sequence Length'].values
+            generated_lengths = subset[subset['Source'] == 'Generated Dataset']['Sequence Length'].values
+
+            # Calcul des KDE pour les deux distributions
+            min_length = min(min(dataset_lengths), min(generated_lengths))
+            max_length = max(max(dataset_lengths), max(generated_lengths))
+            x = np.linspace(min_length, max_length, 1000)
+            
+            kde_dataset = gaussian_kde(dataset_lengths, bw_method=0.05)
+            kde_generated = gaussian_kde(generated_lengths, bw_method=0.05)
+            
+            # Normalisation des KDE
+            dx = (max_length - min_length) / (len(x) - 1)
+            P = kde_dataset(x)
+            Q = kde_generated(x)
+            P_norm = P / np.sum(P * dx)
+            Q_norm = Q / np.sum(Q * dx)
+            
+            # Calcul de la distance de Jensen-Shannon
+            js_distance = jensenshannon(P_norm, Q_norm)
+            self.stats[(observation, year)]["sequence_length_js_distance"] = js_distance
+
+            # Création de l'histogramme avec Plotly
+            fig = go.Figure()
+            
+            # Ajout des histogrammes
+            fig.add_trace(go.Histogram(
+                x=dataset_lengths,
+                name='Dataset',
+                marker_color='green',
+                opacity=0.5
+            ))
+            fig.add_trace(go.Histogram(
+                x=generated_lengths,
+                name='Generated Dataset',
+                marker_color='blue',
+                opacity=0.5
+            ))
+
+            # Ajout des courbes KDE
+            kde_dataset_values = kde_dataset(x) * len(dataset_lengths)
+            kde_generated_values = kde_generated(x) * len(generated_lengths)
+            
+            fig.add_trace(go.Scatter(
+                x=x, y=kde_dataset_values,
+                mode='lines',
+                name='KDE Dataset',
+                line=dict(color='green', width=2)
+            ))
+            fig.add_trace(go.Scatter(
+                x=x, y=kde_generated_values,
+                mode='lines',
+                name='KDE Generated',
+                line=dict(color='blue', width=2)
+            ))
+
+            # Ajout de la distance de Jensen-Shannon
+            fig.add_annotation(
+                x=0.95, y=0.95, xref="paper", yref="paper",
+                text=f"Jensen-Shannon Distance: {js_distance:.4f}",
+                showarrow=False,
+                bordercolor="black",
+                borderwidth=1,
+                borderpad=4,
+                bgcolor="white",
+                opacity=0.8
+            )
+
+            fig.update_layout(
+                title=f"Distribution des longueurs de séquences pour {observation} en {year}",
+                xaxis_title="Longueur de séquence",
+                yaxis_title="Nombre de séquences",
+                barmode='overlay',
+                height=800,
+                width=1200,
+                margin=dict(t=100, b=100, l=50, r=50)
+            )
+
+            if self.show: fig.show()
+            self.save_figure(fig, "sequence_length_distribution", observation, year)
 
     def sequence_digit_stats(self, generated_dataset_path):
         """
@@ -557,6 +660,7 @@ class Validator:
         digit_mean_vals = []
         digit_std_vals = []
         rmse_errors = []
+        sequence_length_js_distances = []
         
         for d in data.values():
             mean_errors.append(d["mean_error"])
@@ -568,6 +672,8 @@ class Validator:
             digit_std_vals.extend(d["digit_std_errors"].values())
             if "rmse_error" in d:
                 rmse_errors.append(d["rmse_error"])
+            if "sequence_length_js_distance" in d:
+                sequence_length_js_distances.append(d["sequence_length_js_distance"])
 
         
         metrics = {
@@ -577,7 +683,8 @@ class Validator:
             "js_distance": (np.mean(js_distances), np.std(js_distances)) if js_distances else (None, None),
             "digit_mean_errors": (np.mean(digit_mean_vals), np.std(digit_mean_vals)),
             "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
-            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if rmse_errors else (None, None)
+            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if rmse_errors else (None, None),
+            "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None)
         }
         return metrics
     def plot_stats(self):
@@ -622,7 +729,7 @@ class Validator:
             data = json.loads(Path(filepath).read_text())
             metrics_by_file[Path(filepath).name] = self.compute_metrics(data)
         
-        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors","rmse_error"]
+        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance"]
         title_list = [
             "Moyenne des erreurs<br>de moyenne de longueurs",
             "Moyenne des erreurs<br>de std de longueurs",
@@ -630,7 +737,8 @@ class Validator:
             "Distance de Jensen Shannon<br>entre les deux distributions",
             "Moyenne des erreurs de moyenne<br>d'occurences de chaque chiffre",
             "Moyenne des erreurs de std<br>d'occurences de chaque chiffre",
-            "Moyenne des RMSE entre les paramètres<br>des matrices de transitions"
+            "Moyenne des RMSE entre les paramètres<br>des matrices de transitions",
+            "Distance de Jensen Shannon<br>des distributions de longueurs"
         ]
 
         file_names = list(metrics_by_file.keys())
@@ -639,7 +747,7 @@ class Validator:
         colors = px.colors.qualitative.Plotly
         color_map = {fname: colors[i % len(colors)] for i, fname in enumerate(file_names)}
         
-        # Création d'une grille 2x3 pour les subplots
+        # Création d'une grille 2x4 pour les subplots
         fig = make_subplots(rows=2, cols=4, subplot_titles=title_list)
  
         # Pour chaque métrique, ajouter un trace par fichier avec sa couleur
@@ -731,6 +839,8 @@ class Validator:
         self.markov_model_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence length")
         self.sequence_length_validation(self.validation_folder_path / generated_dataset_path)
+        print("[INFO] Validation sequence length distribution")
+        self.sequence_length_distribution_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence digit stats")
         self.sequence_digit_stats(self.validation_folder_path / generated_dataset_path)
  

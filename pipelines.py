@@ -232,6 +232,7 @@ def train_decoder_only(config_dict, trial=None):
     # Training loop
     global_batch = 0
     best_val_loss = float('inf')
+    val_losses = []  # Liste pour stocker les pertes de validation
     for epoch in tqdm(range(nb_epoch), colour="green"):
         model.train()
         total_train_loss_weighted = 0
@@ -308,6 +309,8 @@ def train_decoder_only(config_dict, trial=None):
         avg_val_loss_unweighted = total_eval_loss_unweighted / len(val_loader)
         # avg_val_loss_weighted = total_eval_loss_weighted / len(val_loader)
 
+        val_losses.append(avg_val_loss_unweighted)  # Stockage de la perte de validation
+
         # Si on est dans un trial Optuna, on enregistre la perte de validation à chaque époque
         if trial is not None:
             trial.report(avg_val_loss_unweighted, step=epoch)
@@ -342,8 +345,11 @@ def train_decoder_only(config_dict, trial=None):
 
     wandb.finish()
 
-    # Si on est dans un trial Optuna, on utilise la meilleure perte de validation
-    final_val_loss = best_val_loss if trial is not None else avg_val_loss_unweighted
+    # Calcul de la moyenne sur les 20 dernières époques
+    last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
+
+    # Si on est dans un trial Optuna, on utilise la moyenne des 20 dernières époques
+    final_val_loss = last_20_epochs_val_loss if trial is not None else avg_val_loss_unweighted
 
     return model, experiment_path, final_val_loss
 
@@ -420,7 +426,7 @@ def train_generate_validate_pipeline(config_dict, trial=None):
 
     # Si on est dans un trial Optuna, on enregistre toutes les métriques
     if trial is not None:
-        # Enregistrement de la perte de validation finale
+        # Enregistrement de la perte de validation finale (moyenne sur les 20 dernières époques)
         trial.set_user_attr('final_val_loss', final_val_loss)
         
         # Enregistrement des métriques de validation
