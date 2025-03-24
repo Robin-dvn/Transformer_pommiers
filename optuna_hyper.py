@@ -37,7 +37,7 @@ def objective(trial):
     STEP_SIZE = trial.suggest_int("STEP_SIZE", 5, 50)
     MODE = trial.suggest_categorical("MODE", ["TRIANGULAR", "TRIANGULAR2", "EXP_RANGE"])
 
-    print(trial.params)
+    # print(trial.params)
 
     return 2
 

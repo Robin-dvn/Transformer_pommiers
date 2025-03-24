@@ -738,8 +738,8 @@ class Validator:
         print("[INFO] Validation log prob distribution of sequences")
         self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
         self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
-        self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
-        self.plot_stats()
+        # self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
+        # self.plot_stats()
 
         
 if __name__ == "__main__":
