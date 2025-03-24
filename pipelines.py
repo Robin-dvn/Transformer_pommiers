@@ -14,6 +14,7 @@ import json
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim.lr_scheduler import CyclicLR
 from EarlyStopping import EarlyStopping
+import optuna
 
 # Importer les modules nécessaires (assure-toi que ces fichiers existent)
 from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only, DecoderOnlyDynamicPommierDataset
@@ -68,7 +69,7 @@ def create_config_file(file_path, config_dict):
         json.dump(config_dict_serializable, json_file, indent=4)
 
 
-def train_decoder_only(config_dict):
+def train_decoder_only(config_dict, trial=None):
     """
     Entraîne un modèle transformer en mode decoder-only selon la configuration passée.
 
@@ -97,7 +98,7 @@ def train_decoder_only(config_dict):
             - checkpoint_path (str ou Path) : Chemin vers le checkpoint si l'entraînement est repris.
             - auto_precision (bool): Si True, active la précision automatique (torch.cuda.amp).
     Retour:
-        tuple: (modèle entraîné, chemin vers le dossier de l'expérience)
+        tuple: (modèle entraîné, chemin vers le dossier de l'expérience, perte de validation finale)
     """
     # Extract parameters from config_dict
     dataset_path = config_dict['dataset_path']
@@ -117,7 +118,7 @@ def train_decoder_only(config_dict):
     early_stopping_config = config_dict['early_stopping']
     continue_training = config_dict['continue_training']
     checkpoint_path = config_dict['checkpoint_path']
-    auto_precision = config_dict['auto_precision'] # nouveau paramètre
+    auto_precision = config_dict['auto_precision']
 
     # Set seeds for reproducibility
     torch.manual_seed(seed)
@@ -230,6 +231,7 @@ def train_decoder_only(config_dict):
 
     # Training loop
     global_batch = 0
+    best_val_loss = float('inf')
     for epoch in tqdm(range(nb_epoch), colour="green"):
         model.train()
         total_train_loss_weighted = 0
@@ -306,6 +308,16 @@ def train_decoder_only(config_dict):
         avg_val_loss_unweighted = total_eval_loss_unweighted / len(val_loader)
         # avg_val_loss_weighted = total_eval_loss_weighted / len(val_loader)
 
+        # Si on est dans un trial Optuna, on enregistre la perte de validation à chaque époque
+        if trial is not None:
+            trial.report(avg_val_loss_unweighted, step=epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+            
+            # Mise à jour de la meilleure perte de validation
+            if avg_val_loss_unweighted < best_val_loss:
+                best_val_loss = avg_val_loss_unweighted
+
         wandb.log({
             "train_loss_epochs": avg_train_loss_unweighted,
             # "train_loss_weighted_epochs": avg_train_loss_weighted,
@@ -330,10 +342,13 @@ def train_decoder_only(config_dict):
 
     wandb.finish()
 
-    return model, experiment_path
+    # Si on est dans un trial Optuna, on utilise la meilleure perte de validation
+    final_val_loss = best_val_loss if trial is not None else avg_val_loss_unweighted
+
+    return model, experiment_path, final_val_loss
 
 
-def train_generate_validate_pipeline(config_dict):
+def train_generate_validate_pipeline(config_dict, trial=None):
     """
     Pipeline pour entraîner, générer et valider un modèle en utilisant une configuration passée en dictionnaire.
     
@@ -367,7 +382,7 @@ def train_generate_validate_pipeline(config_dict):
     """
     # Train the model
     st = time()
-    model, experiment_path = train_decoder_only(config_dict)
+    model, experiment_path, final_val_loss = train_decoder_only(config_dict, trial)
     et = time()
     print(f"[INFO] le temps en heures pour l'entraînement est de : {(et-st)/3600}")
 
@@ -392,10 +407,29 @@ def train_generate_validate_pipeline(config_dict):
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("out/markov_python_generated_dataset10000.csv")
     st = time()
-    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json",windows = False)
+    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json", windows=False)
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
-    # validator.plot_stats_graph([experiment_path / "generated_dataset_validation_stats.json"])
+    # Lecture des statistiques de validation
+    with open(experiment_path / "generated_dataset_validation_stats.json", "r") as f:
+        stats = json.load(f)
+
+    # Calcul des métriques globales
+    metrics = validator.compute_metrics(stats)
+
+    # Si on est dans un trial Optuna, on enregistre toutes les métriques
+    if trial is not None:
+        # Enregistrement de la perte de validation finale
+        trial.set_user_attr('final_val_loss', final_val_loss)
+        
+        # Enregistrement des métriques de validation
+        for metric_name, (mean, std) in metrics.items():
+            if mean is not None:  # On n'enregistre que les métriques qui ont des valeurs
+                trial.set_user_attr(f'{metric_name}_mean', mean)
+                trial.set_user_attr(f'{metric_name}_std', std)
+
+    # Stockage de la perte de validation dans le validator pour retour
+    validator.validation_loss = final_val_loss
 
     return validator

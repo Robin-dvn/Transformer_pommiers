@@ -5,49 +5,95 @@ import os
 import sys
 import json
 import subprocess
+from pipelines import train_generate_validate_pipeline
 
-def create_trial_folder(trial):
-    """ Crée un dossier unique pour chaque essai. """
-    trial_id = f"trial_{trial.number:03d}"  # Ex: trial_001, trial_002
-    trial_dir = os.path.join("experiments", trial_id)
 
-    os.makedirs(trial_dir, exist_ok=True)
-    return trial_dir
 
 def objective(trial):
     '''
     Objective function for Optuna to optimize the hyperparameters
     '''
+    # Configuration de base
+    base_config = {
+        'dataset_path': "out/markov_python_generated_dataset10000.csv",
+        'seed': 42,
+        'batch_size': 512,
+        'val_split': 0.8,
+        'vocab_size': 17,
+        'padding_idx': 0,
+        'nb_epoch': 100,
+        'lr': 5e-5,
+        'dynamic': True,
+        'scheduler': {
+            'name': 'None',
+            'params': {}
+        },
+        'early_stopping': {
+            'name': 'None',
+            'params': {}
+        },
+        'continue_training': False,
+        'checkpoint_path': None,
+        'auto_precision': False
+    }
 
-    D_MODEL = trial.suggest_categorical("D_MODEL", [32, 64, 128, 256, 512, 1024, 2048])
+    # Hyperparamètres à optimiser
+    base_config['d_model'] = trial.suggest_categorical("d_model", [32, 64, 128, 256, 512])
+    base_config['n_head'] = trial.suggest_categorical("n_head", [1, 2, 4, 8])
+    base_config['nb_layers'] = trial.suggest_int("nb_layers", 1, 20)
+    base_config['dim_feedforward'] = 2048  # Valeur fixe
+  
 
-
-    valid_nb_heads = [x for x in range(1, D_MODEL + 1) if D_MODEL % x == 0]
-    NB_HEAD = trial.suggest_categorical("NB_HEAD", valid_nb_heads)
+    # Exécution de la pipeline avec le trial
+    validator = train_generate_validate_pipeline(base_config, trial)
     
-    valid_ff_dims = [x for x in [128, 256, 512, 1024, 2048, 4096, 8192] if x >= 2 * D_MODEL]
-    FF_DIM = trial.suggest_categorical("FF_DIM", valid_ff_dims)
-
-    NB_LAYERS = trial.suggest_int("NB_LAYERS", 1, 50)  # Exploration entre 1 et 50
-    NB_EPOCHS = trial.suggest_int("NB_EPOCHS", 100, 600, step=50)  # Entre 10 et 100 avec un pas de 10
-    BATCHSIZE = trial.suggest_int("BATCHSIZE", 64, 2048, log=True)  # Échelle logarithmique (utile pour batch size)
-
-    BASE_LR = trial.suggest_float("BASE_LR", 1e-5, 1e-1, log=True)
-    MAX_LR = trial.suggest_float("MAX_LR", BASE_LR, 10 * BASE_LR, log=True)
-    STEP_SIZE = trial.suggest_int("STEP_SIZE", 5, 50)
-    MODE = trial.suggest_categorical("MODE", ["TRIANGULAR", "TRIANGULAR2", "EXP_RANGE"])
-
-    # print(trial.params)
-
-    return 2
-
-
-
-
+    if validator is None:
+        return float('inf')  # Retourne une valeur infinie si la génération échoue
+    
+    # La perte de validation est maintenant gérée dans la pipeline
+    return validator.validation_loss
 
 if __name__ == "__main__":
-    study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=2)
+    # Création de l'étude Optuna avec pruning
+    pruner = optuna.pruners.MedianPruner(
+        n_startup_trials=5,      # Nombre de trials avant de commencer le pruning
+        n_warmup_steps=10,       # Nombre d'étapes avant de commencer le pruning
+        interval_steps=1,        # Intervalle entre les évaluations de pruning
+        n_min_trials=5,          # Nombre minimum de trials pour le pruning
+        n_warmup_trials=5        # Nombre de trials de warmup
+    )
+    
+    study = optuna.create_study(
+        direction="minimize",
+        study_name="transformer_optimization",
+        storage="sqlite:///optuna_study.db",
+        load_if_exists=True,
+        pruner=pruner
+    )
+    
+    # Optimisation
+    study.optimize(
+        objective,
+        n_trials=50,  # Nombre d'essais à effectuer
+        n_jobs=1,     # Nombre de jobs parallèles
+        show_progress_bar=True,
+        gc_after_trial=True  # Nettoie la mémoire après chaque essai
+    )
+    
+    # Affichage des résultats
+    print("\nMeilleurs paramètres trouvés :")
     print(study.best_params)
+    print("\nMeilleure valeur trouvée :")
     print(study.best_value)
-    print(study.best_trial)
+    
+    # Sauvegarde des résultats
+    results = {
+        "best_params": study.best_params,
+        "best_value": study.best_value,
+        "best_trial": study.best_trial.number,
+        "n_trials": len(study.trials),
+        "n_pruned_trials": len(study.get_trials(states=[optuna.trial.TrialState.PRUNED]))
+    }
+    
+    with open("experiments/optuna_results.json", "w") as f:
+        json.dump(results, f, indent=4)
