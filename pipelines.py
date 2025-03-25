@@ -413,7 +413,7 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
         wandb_run.finish(quiet=True)
         # Puis on synchronise en ligne
         print("[INFO] Synchronisation des données wandb en ligne...")
-        subprocess.run(["wandb", "sync", str( "wandb" / "latest-run")])
+        subprocess.run(["wandb", "sync", str( "wandb/latest-run")])
     else:
         print("cccc")
         wandb_run.finish(quiet=True)
