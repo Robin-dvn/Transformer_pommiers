@@ -45,7 +45,7 @@ if __name__ == "__main__":
         }
         #Essai baseline
         print(f"=== {'Test' if test else 'Essai'} baseline ===")
-        validator_baseline = train_generate_validate_pipeline(base_config)
+        validator_baseline = train_generate_validate_pipeline(base_config,sync_wandb=True)
 
         # Essai cyclical learning rate
         config_cyclical = base_config.copy()
