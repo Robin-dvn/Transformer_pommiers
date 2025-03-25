@@ -380,7 +380,7 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("out/markov_python_generated_dataset10000.csv")
     st = time()
-    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json", windows=False)
+    # validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json", windows=False)
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
