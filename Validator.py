@@ -944,18 +944,24 @@ class Validator:
 
         
 if __name__ == "__main__":
-
     vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16} 
     id_to_vocab = {v: k for k, v in vocab_to_id.items()}
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    # Création d'une instance de Validator sans modèle (on n'en a pas besoin pour ce test)
-    validator = Validator(validation_folder_path=Path("experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709"), show=True)
+    # Création d'une instance de Validator sans modèle
+    validator = Validator(show=True)
     
-    # Chargement des données de référence
-    validator.load_data("out/markov_python_generated_dataset10000.csv")
+    # Liste des dossiers d'expériences à comparer
+    experiment_paths = [
+        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709",
+        "experiments/DO_NBL-15_DM-32_DFF-2048_TS-20250324-101709",
+        "experiments/DO_NBL-15_DM-32_DFF-512_TS-20250324-101709"
+    ]
     
-    # Test de la fonction plot_stats_graph avec le même dossier d'expérimentation
-    print("[INFO] Test de plot_stats_graph")
-    validator.plot_stats_graph([Path("experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709/generated_dataset_validation_stats.json")])
+    # Conversion en objets Path
+    experiment_paths = [Path(path) for path in experiment_paths]
+    
+    # Test de la fonction plot_stats_graph avec les dossiers d'expérimentation
+    print("[INFO] Génération du graphique de comparaison des statistiques")
+    validator.plot_stats_graph(experiment_paths=experiment_paths)

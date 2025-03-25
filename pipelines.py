@@ -410,12 +410,12 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     if sync_wandb:
         print("aaaa")
         # On termine d'abord la run en mode offline
-        wandb_run.finish(quiet=True, sync=False)
+        wandb_run.finish(quiet=True)
         # Puis on synchronise en ligne
         print("[INFO] Synchronisation des données wandb en ligne...")
         subprocess.run(["wandb", "sync", str( "wandb" / "latest-run")])
     else:
         print("cccc")
-        wandb_run.finish(quiet=True, sync=False)
+        wandb_run.finish(quiet=True)
 
     return validator
