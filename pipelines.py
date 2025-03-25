@@ -371,28 +371,28 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     # Initialize the validator
     validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
     st = time()
-    # try:
-    #     validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
-    # except ValidationError as e:
-    #     print(f"[ERROR] {e}")
-    #     return None
+    try:
+        validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
+    except ValidationError as e:
+        print(f"[ERROR] {e}")
+        return None
     et = time()
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("out/markov_python_generated_dataset10000.csv")
     st = time()
-    # validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json", windows=False)
+    validator.validation_pipeline("generated_dataset.csv", "generated_dataset_validation_stats.json", windows=False)
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
     # Lecture des statistiques de validation
-    # with open(experiment_path / "generated_dataset_validation_stats.json", "r") as f:
-    #     stats = json.load(f)
-    # # Stockage de la perte de validation dans le validator pour retoui
-    # stats["final_val_loss"] = final_val_loss
-    # with open(experiment_path / "generated_dataset_validation_stats.json", "w") as f:
-    #     json.dump(stats, f)
-    # # Calcul des métriques globales
-    # metrics = validator.compute_metrics(stats)
+    with open(experiment_path / "generated_dataset_validation_stats.json", "r") as f:
+        stats = json.load(f)
+    # Stockage de la perte de validation dans le validator pour retoui
+    stats["final_val_loss"] = final_val_loss
+    with open(experiment_path / "generated_dataset_validation_stats.json", "w") as f:
+        json.dump(stats, f)
+    # Calcul des métriques globales
+    metrics = validator.compute_metrics(stats)
 
     # Si on est dans un trial Optuna, on enregistre toutes les métriques
     if trial is not None:
