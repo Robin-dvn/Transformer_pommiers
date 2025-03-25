@@ -336,7 +336,7 @@ def train_decoder_only(config_dict, trial=None):
     last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
 
     # Si on est dans un trial Optuna, on utilise la moyenne des 20 dernières époques
-    final_val_loss = last_20_epochs_val_loss if trial is not None else avg_val_loss_unweighted
+    final_val_loss = last_20_epochs_val_loss 
 
     return model, experiment_path, final_val_loss, wandb.run
 
@@ -390,7 +390,7 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
 
     # Calcul des métriques globales
     metrics = validator.compute_metrics(stats)
-
+    metrics["final_val_loss"] = final_val_loss
     # Si on est dans un trial Optuna, on enregistre toutes les métriques
     if trial is not None:
         # Enregistrement de la perte de validation finale (moyenne sur les 20 dernières époques)
@@ -402,8 +402,6 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
                 trial.set_user_attr(f'{metric_name}_mean', mean)
                 trial.set_user_attr(f'{metric_name}_std', std)
 
-    # Stockage de la perte de validation dans le validator pour retour
-    validator.validation_loss = final_val_loss
 
     # Fermeture de la run wandb avec ou sans synchronisation en ligne
     if sync_wandb:

@@ -7,7 +7,7 @@ if __name__ == "__main__":
     if test:
         # Configuration de base pour test
         couple_l_ff = [(15, 1024)]  # Uniquement le premier couple pour le test
-        nb_epochs = 50  # Réduit à 50 epochs pour le test
+        nb_epochs = 5  # Réduit à 50 epochs pour le test
         print("=== Mode Test ===")
     else:
         # Configuration de base complète
