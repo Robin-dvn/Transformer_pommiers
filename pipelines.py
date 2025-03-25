@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim.lr_scheduler import CyclicLR
 from EarlyStopping import EarlyStopping
 import optuna
+import subprocess
 
 # Importer les modules nécessaires (assure-toi que ces fichiers existent)
 from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only, DecoderOnlyDynamicPommierDataset
@@ -259,8 +260,6 @@ def train_decoder_only(config_dict, trial=None):
                 scaler.scale(loss_unweighted).backward()
                 scaler.step(optimizer)
                 scaler.update()
-                # with torch.no_grad():
-                    # loss_weighted = criterion_weighted(logits_flat, target_flat)
             else:
                 logits = model(input_seq, padding_mask)
                 logits_trim = logits[:, 2:, :]
@@ -268,8 +267,6 @@ def train_decoder_only(config_dict, trial=None):
                 logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
                 target_flat = targets_trim.reshape(-1)
                 loss_unweighted = criterion_unweighted(logits_flat, target_flat)
-                # with torch.no_grad():
-                    # loss_weighted = criterion_weighted(logits_flat, target_flat)
                 optimizer.zero_grad()
                 loss_unweighted.backward()
                 optimizer.step()
@@ -278,7 +275,6 @@ def train_decoder_only(config_dict, trial=None):
                 scheduler.step()
 
             total_train_loss_unweighted += loss_unweighted.item()
-            # total_train_loss_weighted += loss_weighted.item()
 
             # Log le learning rate à chaque batch
             current_lr = optimizer.param_groups[0]['lr']
@@ -300,14 +296,10 @@ def train_decoder_only(config_dict, trial=None):
                 logits_flat = logits_trim.reshape(-1, logits_trim.size(-1))
                 target_flat = targets_trim.reshape(-1)
                 loss_unweighted = criterion_unweighted(logits_flat, target_flat)
-                # loss_weighted = criterion_weighted(logits_flat, target_flat)
                 total_eval_loss_unweighted += loss_unweighted.item()
-                # total_eval_loss_weighted += loss_weighted.item()
 
         avg_train_loss_unweighted = total_train_loss_unweighted / len(train_loader)
-        # avg_train_loss_weighted = total_train_loss_weighted / len(train_loader)
         avg_val_loss_unweighted = total_eval_loss_unweighted / len(val_loader)
-        # avg_val_loss_weighted = total_eval_loss_weighted / len(val_loader)
 
         val_losses.append(avg_val_loss_unweighted)  # Stockage de la perte de validation
 
@@ -323,12 +315,9 @@ def train_decoder_only(config_dict, trial=None):
 
         wandb.log({
             "train_loss_epochs": avg_train_loss_unweighted,
-            # "train_loss_weighted_epochs": avg_train_loss_weighted,
-            "val_loss_epochs": avg_val_loss_unweighted,
-            # "val_loss_weighted_epochs": avg_val_loss_weighted
+            "val_loss_epochs": avg_val_loss_unweighted
         })
         tqdm.write(f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, val loss unweighted = {avg_val_loss_unweighted:.4f}")
-        # tqdm.write(f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, train loss weighted = {avg_train_loss_weighted:.4f}, val loss unweighted = {avg_val_loss_unweighted:.4f}, val loss weighted = {avg_val_loss_weighted:.4f}")
         if scheduler is not None and scheduler_config['name'] == "ReduceOnPlatau":
             scheduler.step(avg_val_loss_unweighted)
 
@@ -343,52 +332,30 @@ def train_decoder_only(config_dict, trial=None):
         'optimizer_state_dict': optimizer.state_dict()
     }, experiment_path / "model_state.pth")
 
-    wandb.finish()
-
     # Calcul de la moyenne sur les 20 dernières époques
     last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
 
     # Si on est dans un trial Optuna, on utilise la moyenne des 20 dernières époques
     final_val_loss = last_20_epochs_val_loss if trial is not None else avg_val_loss_unweighted
 
-    return model, experiment_path, final_val_loss
+    return model, experiment_path, final_val_loss, wandb.run
 
 
-def train_generate_validate_pipeline(config_dict, trial=None):
+def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     """
     Pipeline pour entraîner, générer et valider un modèle en utilisant une configuration passée en dictionnaire.
     
     Args:
-        config_dict (dict): Dictionnaire contenant les paramètres de configuration. Clés attendues :
-            - dataset_path (str ou Path) : Chemin vers le dataset.
-            - seed (int) : Seed pour la reproductibilité.
-            - batch_size (int) : Taille des batches pour l'entraînement et la validation.
-            - val_split (float) : Fraction du dataset utilisée pour la validation.
-            - vocab_size (int) : Taille du vocabulaire.
-            - padding_idx (int) : Indice de padding.
-            - n_head (int) : Nombre de têtes d'attention.
-            - d_model (int) : Dimension du modèle.
-            - nb_layers (int) : Nombre de couches du décodeur.
-            - lr (float) : Taux d'apprentissage.
-            - nb_epoch (int) : Nombre d'époques d'entraînement.
-            - dim_feedforward (int) : Dimension du réseau feedforward.
-            - dynamic (bool) : Indique si un dataset dynamique est utilisé.
-            - scheduler (dict) : Dictionnaire contenant :
-                - name (str) : Type de scheduler parmi ["cyclical", "ReduceOnPlatau", "None"].
-                - params (dict) : Paramètres spécifiques au scheduler.
-            - early_stopping (dict) : Dictionnaire contenant :
-                - name (str) : Type d'early stopping parmi ["patience", "None"].
-                - params (dict) : Paramètres spécifiques à l'early stopping.
-            - continue_training (bool) : Indique si l'entraînement doit reprendre depuis un checkpoint.
-            - checkpoint_path (str ou Path) : Chemin vers le checkpoint si l'entraînement est repris.
-            - auto_precision (bool): Si True, active la précision automatique (torch.cuda.amp).
+        config_dict (dict): Dictionnaire contenant les paramètres de configuration.
+        trial (optuna.Trial, optional): Trial Optuna pour l'optimisation des hyperparamètres.
+        sync_wandb (bool, optional): Si True, synchronise les données avec wandb en ligne à la fin de la run.
     
     Returns:
         Validator : Instance de la classe Validator utilisée pour générer et valider les données.
     """
     # Train the model
     st = time()
-    model, experiment_path, final_val_loss = train_decoder_only(config_dict, trial)
+    model, experiment_path, final_val_loss, wandb_run = train_decoder_only(config_dict, trial)
     et = time()
     print(f"[INFO] le temps en heures pour l'entraînement est de : {(et-st)/3600}")
 
@@ -437,5 +404,15 @@ def train_generate_validate_pipeline(config_dict, trial=None):
 
     # Stockage de la perte de validation dans le validator pour retour
     validator.validation_loss = final_val_loss
+
+    # Fermeture de la run wandb avec ou sans synchronisation en ligne
+    if sync_wandb:
+        # On termine d'abord la run en mode offline
+        wandb_run.finish(quiet=True, sync=False)
+        # Puis on synchronise en ligne
+        print("[INFO] Synchronisation des données wandb en ligne...")
+        subprocess.run(["wandb", "sync", str(experiment_path / "wandb" / "latest-run")])
+    else:
+        wandb_run.finish(quiet=True, sync=False)
 
     return validator

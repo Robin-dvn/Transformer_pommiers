@@ -33,24 +33,24 @@ class Validator:
         df (pd.DataFrame): DataFrame pandas contenant les données de référence ou générées.
         simu_folder (str): Dossier où les figures générées sont sauvegardées.
     """
-    def __init__(self, model:Transformer, device, token_to_id,validation_folder_path,datapath= None,show=False ):
+    def __init__(self, model=None, device=None, token_to_id=None, validation_folder_path=None, datapath=None, show=False):
         """
         Initialise le validateur avec un modèle, un dispositif, et un mappage de tokens.
 
         Args:
-            model (Transformer): Modèle Transformer utilisé pour générer des séquences.
-            device (str): Dispositif sur lequel les calculs sont effectués (CPU ou GPU).
-            token_to_id (dict): Dictionnaire mappant des tokens à leurs identifiants numériques.
+            model (Transformer, optional): Modèle Transformer utilisé pour générer des séquences.
+            device (str, optional): Dispositif sur lequel les calculs sont effectués (CPU ou GPU).
+            token_to_id (dict, optional): Dictionnaire mappant des tokens à leurs identifiants numériques.
+            validation_folder_path (str, optional): Chemin vers le dossier de validation.
             datapath (str, optional): Chemin vers le fichier de données de référence.
             show (bool, optional): Indique si les graphiques doivent être affichés.
         """
-
         self.model = model
         self.device = device
         self.datapath = datapath
         self.validation_folder_path = validation_folder_path
         self.token_to_id = token_to_id
-        self.id_to_token = {v: k for k, v in token_to_id.items()}
+        self.id_to_token = {v: k for k, v in token_to_id.items()} if token_to_id else None
         self.stats = {}
         self.show = show
         self.df = pd.DataFrame(columns=["Observation", "Year", "Sequence", "Terminal Fate"])
@@ -65,6 +65,9 @@ class Validator:
             observation (str): Observation associée à la figure.
             year (int): Année associée à la figure.
         """
+        if self.validation_folder_path is None:
+            raise ValueError("Le chemin du dossier de validation doit être initialisé pour sauvegarder des figures")
+            
         folder_path = self.validation_folder_path / "assets" / validation_type
         os.makedirs(folder_path, exist_ok=True)
         file_path = folder_path / f"{observation}_{year}_{validation_type}.png"
@@ -72,7 +75,6 @@ class Validator:
     
     def generate_data(self, nb_samples, output_path, end_toks_list):
         """
-
         Génère des données en utilisant le modèle Transformer.
 
         Args:
@@ -80,6 +82,11 @@ class Validator:
             output_path (str): Chemin où sauvegarder les données générées.
             end_toks_list (list): Liste des tokens de fin.
         """
+        if self.model is None or self.device is None:
+            raise ValueError("Le modèle et le device doivent être initialisés pour générer des données")
+        
+        if self.token_to_id is None:
+            raise ValueError("Le dictionnaire token_to_id doit être initialisé pour générer des données")
 
         sequences_generees = []
         decoder_only = True
@@ -135,16 +142,17 @@ class Validator:
         self.df.to_csv(output_path, index=False)
 
 
-    def load_data(self,data_path = None):
-
+    def load_data(self, data_path=None):
         """
         Charge les données à partir d'un fichier CSV.
 
         Args:
             data_path (str, optional): Chemin vers le fichier de données.
         """
-        self.datapath = data_path
-        assert self.datapath is not None, "No data path provided"
+        if data_path is None and self.datapath is None:
+            raise ValueError("Aucun chemin de données n'a été fourni")
+        
+        self.datapath = data_path or self.datapath
         self.df = pd.read_csv(self.datapath)
         
 
@@ -329,83 +337,102 @@ class Validator:
             dataset_lengths = subset[subset['Source'] == 'Dataset']['Sequence Length'].values
             generated_lengths = subset[subset['Source'] == 'Generated Dataset']['Sequence Length'].values
 
-            # Calcul des KDE pour les deux distributions
-            min_length = min(min(dataset_lengths), min(generated_lengths))
-            max_length = max(max(dataset_lengths), max(generated_lengths))
-            x = np.linspace(min_length, max_length, 1000)
-            
-            kde_dataset = gaussian_kde(dataset_lengths, bw_method=0.05)
-            kde_generated = gaussian_kde(generated_lengths, bw_method=0.05)
-            
-            # Normalisation des KDE
-            dx = (max_length - min_length) / (len(x) - 1)
-            P = kde_dataset(x)
-            Q = kde_generated(x)
-            P_norm = P / np.sum(P * dx)
-            Q_norm = Q / np.sum(Q * dx)
-            
-            # Calcul de la distance de Jensen-Shannon
-            js_distance = jensenshannon(P_norm, Q_norm)
-            self.stats[(observation, year)]["sequence_length_js_distance"] = js_distance
+            # Vérifier si toutes les séquences ont la même taille
+            if len(np.unique(dataset_lengths)) == 1 and len(np.unique(generated_lengths)) == 1:
+                # Si toutes les séquences ont la même taille, pas besoin de plot et JS distance = 0 ou 1
+                js_distance = 0 if np.unique(dataset_lengths)[0] == np.unique(generated_lengths)[0] else 1
+                self.stats[(observation, year)]["sequence_length_js_distance"] = js_distance
+                print(f"[INFO] Toutes les séquences ont la même taille pour {observation} en {year}. JS distance = {js_distance}")
+                continue
 
-            # Création de l'histogramme avec Plotly
-            fig = go.Figure()
-            
-            # Ajout des histogrammes
-            fig.add_trace(go.Histogram(
-                x=dataset_lengths,
-                name='Dataset',
-                marker_color='green',
-                opacity=0.5
-            ))
-            fig.add_trace(go.Histogram(
-                x=generated_lengths,
-                name='Generated Dataset',
-                marker_color='blue',
-                opacity=0.5
-            ))
+            try:
+                # Calcul des KDE pour les deux distributions
+                min_length = min(min(dataset_lengths), min(generated_lengths))
+                max_length = max(max(dataset_lengths), max(generated_lengths))
+                x = np.linspace(min_length, max_length, 2000)  # Plus de points pour une meilleure résolution
+                
+                kde_dataset = gaussian_kde(dataset_lengths, bw_method=0.5)
+                kde_generated = gaussian_kde(generated_lengths, bw_method=0.5)
+                
+                # Calcul des valeurs KDE
+                P = kde_dataset(x)
+                Q = kde_generated(x)
+                
+                # Normalisation pour la distance de Jensen-Shannon
+                dx = (max_length - min_length) / (len(x) - 1)
+                P_norm = P / np.sum(P * dx)
+                Q_norm = Q / np.sum(Q * dx)
+                
+                # Calcul de la distance de Jensen-Shannon
+                js_distance = jensenshannon(P_norm, Q_norm)
+                self.stats[(observation, year)]["sequence_length_js_distance"] = js_distance
 
-            # Ajout des courbes KDE
-            kde_dataset_values = kde_dataset(x) * len(dataset_lengths)
-            kde_generated_values = kde_generated(x) * len(generated_lengths)
-            
-            fig.add_trace(go.Scatter(
-                x=x, y=kde_dataset_values,
-                mode='lines',
-                name='KDE Dataset',
-                line=dict(color='green', width=2)
-            ))
-            fig.add_trace(go.Scatter(
-                x=x, y=kde_generated_values,
-                mode='lines',
-                name='KDE Generated',
-                line=dict(color='blue', width=2)
-            ))
+                # Création de l'histogramme avec Plotly
+                fig = go.Figure()
+                
+                # Nombre de bins égal à la longueur maximale des séquences
+                nbins = int(max_length - min_length + 1)
+                
+                # Ajout des histogrammes avec nombre de bins adapté et normalisation en densité
+                fig.add_trace(go.Histogram(
+                    x=dataset_lengths,
+                    name='Dataset',
+                    marker_color='green',
+                    opacity=0.5,
+                    nbinsx=nbins,  # Nombre de bins égal à la plage de longueurs
+                    histnorm='probability density'  # Normalisation en densité
+                ))
+                fig.add_trace(go.Histogram(
+                    x=generated_lengths,
+                    name='Generated Dataset',
+                    marker_color='blue',
+                    opacity=0.5,
+                    nbinsx=nbins,  # Nombre de bins égal à la plage de longueurs
+                    histnorm='probability density'  # Normalisation en densité
+                ))
 
-            # Ajout de la distance de Jensen-Shannon
-            fig.add_annotation(
-                x=0.95, y=0.95, xref="paper", yref="paper",
-                text=f"Jensen-Shannon Distance: {js_distance:.4f}",
-                showarrow=False,
-                bordercolor="black",
-                borderwidth=1,
-                borderpad=4,
-                bgcolor="white",
-                opacity=0.8
-            )
+                # Ajout des courbes KDE (déjà normalisées)
+                fig.add_trace(go.Scatter(
+                    x=x, y=P_norm,
+                    mode='lines',
+                    name='KDE Dataset',
+                    line=dict(color='green', width=2)
+                ))
+                fig.add_trace(go.Scatter(
+                    x=x, y=Q_norm,
+                    mode='lines',
+                    name='KDE Generated',
+                    line=dict(color='blue', width=2)
+                ))
 
-            fig.update_layout(
-                title=f"Distribution des longueurs de séquences pour {observation} en {year}",
-                xaxis_title="Longueur de séquence",
-                yaxis_title="Nombre de séquences",
-                barmode='overlay',
-                height=800,
-                width=1200,
-                margin=dict(t=100, b=100, l=50, r=50)
-            )
+                # Ajout de la distance de Jensen-Shannon
+                fig.add_annotation(
+                    x=0.95, y=0.95, xref="paper", yref="paper",
+                    text=f"Jensen-Shannon Distance: {js_distance:.4f}",
+                    showarrow=False,
+                    bordercolor="black",
+                    borderwidth=1,
+                    borderpad=4,
+                    bgcolor="white",
+                    opacity=0.8
+                )
 
-            if self.show: fig.show()
-            self.save_figure(fig, "sequence_length_distribution", observation, year)
+                fig.update_layout(
+                    title=f"Distribution des longueurs de séquences pour {observation} en {year}",
+                    xaxis_title="Longueur de séquence",
+                    yaxis_title="Nombre de séquences",
+                    barmode='overlay',
+                    height=800,
+                    width=1200,
+                    margin=dict(t=100, b=100, l=50, r=50)
+                )
+
+                if self.show: fig.show()
+                self.save_figure(fig, "sequence_length_distribution", observation, year)
+            except Exception as e:
+                print(f"[WARNING] Erreur lors du calcul de la distribution pour {observation} en {year}: {str(e)}")
+                self.stats[(observation, year)]["sequence_length_js_distance"] = 1  # Cas le plus défavorable
+                continue
 
     def sequence_digit_stats(self, generated_dataset_path):
         """
@@ -661,6 +688,7 @@ class Validator:
         digit_std_vals = []
         rmse_errors = []
         sequence_length_js_distances = []
+        val_losses = []
         
         for d in data.values():
             mean_errors.append(d["mean_error"])
@@ -674,6 +702,8 @@ class Validator:
                 rmse_errors.append(d["rmse_error"])
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
+            if "val_loss" in d:
+                val_losses.append(d["val_loss"])
 
         
         metrics = {
@@ -683,8 +713,9 @@ class Validator:
             "js_distance": (np.mean(js_distances), np.std(js_distances)) if js_distances else (None, None),
             "digit_mean_errors": (np.mean(digit_mean_vals), np.std(digit_mean_vals)),
             "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
-            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if rmse_errors else (None, None),
-            "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None)
+            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if len(rmse_errors) >= 10 else (None, None),
+            "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None),
+            "val_loss": (np.mean(val_losses), np.std(val_losses)) if val_losses else (None, None)
         }
         return metrics
     def plot_stats(self):
@@ -722,14 +753,59 @@ class Validator:
         fig.update_layout(title="Statistics Table")
         if self.show: fig.show()
     
-    def plot_stats_graph(self,filepaths):
+    def plot_stats_graph(self, filepaths, experiment_paths=None):
+        """
+        Affiche un graphique des statistiques à partir de fichiers JSON.
+
+        Args:
+            filepaths (list): Liste des chemins vers les fichiers JSON contenant les statistiques.
+            experiment_paths (list, optional): Liste des chemins vers les dossiers d'expériences.
+        """
+        if not filepaths and not experiment_paths:
+            raise ValueError("Aucun fichier de statistiques ou chemin d'expérience n'a été fourni")
+
+        # Si experiment_paths est fourni, construire les filepaths
+        if experiment_paths:
+            filepaths = [Path(exp_path) / "generated_dataset_validationstats.json" for exp_path in experiment_paths]
+
         # Calculer les métriques pour chaque fichier
         metrics_by_file = {}
+
+        i=0 
         for filepath in filepaths:
-            data = json.loads(Path(filepath).read_text())
-            metrics_by_file[Path(filepath).name] = self.compute_metrics(data)
-        
-        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance"]
+            if not os.path.exists(filepath):
+                print(f"Attention: Le fichier {filepath} n'existe pas")
+                continue
+            try:
+                data = json.loads(Path(filepath).read_text())
+                
+                # Si experiment_paths est fourni, récupérer le nom depuis le fichier config
+                if experiment_paths:
+                    exp_path = Path(filepath).parent
+                    config_path = exp_path / "config.json"
+                    if os.path.exists(config_path):
+                        with open(config_path, 'r') as f:
+                            config = json.load(f)
+                            graph_name = config.get('graph_name', Path(filepath).name)
+                    else:
+                        graph_name = Path(filepath).name + f"_{i}"
+                else:
+                    graph_name = Path(filepath).name + f"_{i}"
+                
+                metrics_by_file[graph_name] = self.compute_metrics(data)
+                    
+            except Exception as e:
+                print(f"Erreur lors de la lecture du fichier {filepath}: {str(e)}")
+                continue
+        i+=1
+
+        if not metrics_by_file:
+            raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
+
+        # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
+        has_full_rmse = any(metrics_by_file[name]["rmse_error"][0] is not None for name in metrics_by_file)
+
+        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "val_loss"]
         title_list = [
             "Moyenne des erreurs<br>de moyenne de longueurs",
             "Moyenne des erreurs<br>de std de longueurs",
@@ -738,29 +814,36 @@ class Validator:
             "Moyenne des erreurs de moyenne<br>d'occurences de chaque chiffre",
             "Moyenne des erreurs de std<br>d'occurences de chaque chiffre",
             "Moyenne des RMSE entre les paramètres<br>des matrices de transitions",
-            "Distance de Jensen Shannon<br>des distributions de longueurs"
+            "Distance de Jensen Shannon<br>des distributions de longueurs",
+            "Moyenne de la loss de validation<br>sur les 20 dernières epochs"
         ]
 
-        file_names = list(metrics_by_file.keys())
+        # Mettre à jour les valeurs RMSE à 0 pour tous les fichiers si elle n'est pas complète
+        if not has_full_rmse:
+            for name in metrics_by_file:
+                metrics_by_file[name]["rmse_error"] = (None, None)
+
+
+        graph_names = list(metrics_by_file.keys())
         
         # Assigner une couleur fixe par fichier
         colors = px.colors.qualitative.Plotly
-        color_map = {fname: colors[i % len(colors)] for i, fname in enumerate(file_names)}
+        color_map = {name: colors[i % len(colors)] for i, name in enumerate(graph_names)}
         
-        # Création d'une grille 2x4 pour les subplots
-        fig = make_subplots(rows=2, cols=4, subplot_titles=title_list)
+        # Création d'une grille 3x3 pour les subplots
+        fig = make_subplots(rows=3, cols=3, subplot_titles=title_list)
  
         # Pour chaque métrique, ajouter un trace par fichier avec sa couleur
         for i, metric in enumerate(metric_list):
-            row = i // 4 + 1
-            col = i % 4 + 1
-            for fname in file_names:
-                m, s = metrics_by_file[fname][metric]
+            row = i // 3 + 1
+            col = i % 3 + 1
+            for name in graph_names:
+                m, s = metrics_by_file[name][metric]
                 m = 0 if m is None else m
                 s = 0 if s is None else s
                 fig.add_trace(
                     go.Bar(
-                        x=["Dim FFL = "+fname[-9:-5]],
+                        x=[name],
                         y=[m],
                         error_y=dict(
                             type="data",
@@ -769,8 +852,8 @@ class Validator:
                             thickness=1,
                             width=1
                         ),
-                        marker_color=color_map[fname],
-                        name=fname,
+                        marker_color=color_map[name],
+                        name=name,
                         showlegend=False
                     ),
                     row=row, col=col
@@ -858,48 +941,13 @@ if __name__ == "__main__":
     id_to_vocab = {v: k for k, v in vocab_to_id.items()}
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    couples_ffl = [(256,45)]
-    # couples_ffl = [(2048,8)]
-    for ff,layers in tqdm(couples_ffl,colour="green"):
-
-        model = TransformerDecoderOnly(17,32,4,layers,0,dim_feedforward=ff)
-        # model = Transformer(17,12,32,4,0)
-        state_dict = torch.load(f"poids/DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.pth",map_location=torch.device(device))
-        model.load_state_dict(state_dict["model_state_dict"])
-        # model.load_state_dict(state_dict)
-        model.eval().to(device=device)
-
-
-        validator = Validator(model, device, token_to_id=vocab_to_id,validation_folder_path="ici")
-        # st = time()
-        # validator.validation_pipeline("generated_DecoderOnly_32_layers_45_epochs_200_ff_256.csv","experiments/test_validation/","stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json")
-        # et = time()
-        # print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
-
-        # validator.show = Tru
-        # nb_samples =10000
-        # validator.generate_data(nb_samples, f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv", end_toks_list=[7,8,9,10,11])
-        # validator.load_data("out/markov_python_generated_dataset10000.csv") 
-        # print("[INFO] Validation markov model")
-        # validator.markov_model_validation(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
-        # print("[INFO] Validation sequence length")
-        # validator.sequence_length_validation(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
-        # print("[INFO] Validation sequence digit stats")
-        # validator.sequence_digit_stats(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
-        # print("[INFO] Validation log prob distribution of sequences")
-        # validator.log_prob_distribution_of_sequences(f"out/generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.csv")
-        # validator.plot_stats()
-        # validator.save_stats(f"stats/stats_generated_DecoderOnly_32_layers_{layers}_epochs_200_ff_{ff}.json")
-        # validator.load_stats("stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json")
-        # validator.plot_stats()
-        validator.plot_stats_graph([
-            "stats/stats_generated_DecoderOnly_32_layers_15_epochs_200_ff_1024.json",
-            "stats/stats_generated_DecoderOnly_32_layers_8_epochs_200_ff_2048.json",
-            "stats/stats_generated_DecoderOnly_32_layers_27_epochs_200_ff_512.json",
-            "stats/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"
-            ])
-
-        # validator.plot_stats_graph(["experiments/test_validation/stats_generated_DecoderOnly_32_layers_45_epochs_200_ff_256.json"])
-
-        # validator.sequence_digit_stats("out/generated_dataset10000.csv")
-        # validator.generate_data(nb_samples, f"out/generated_dataset{nb_samples}.csv", end_toks_list=[7,8,9,10,11]sqi<tab>iii
+    
+    # Création d'une instance de Validator sans modèle (on n'en a pas besoin pour ce test)
+    validator = Validator(validation_folder_path=Path("experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709"), show=True)
+    
+    # Chargement des données de référence
+    validator.load_data("out/markov_python_generated_dataset10000.csv")
+    
+    # Test de la fonction plot_stats_graph avec le même dossier d'expérimentation
+    print("[INFO] Test de plot_stats_graph")
+    validator.plot_stats_graph([Path("experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709/generated_dataset_validation_stats.json")])
