@@ -689,8 +689,17 @@ class Validator:
         rmse_errors = []
         sequence_length_js_distances = []
         val_losses = []
+        final_val_loss = None
         
-        for d in data.values():
+        # Récupérer la final_val_loss au niveau parent si elle existe
+        if 'final_val_loss' in data:
+            final_val_loss = data['final_val_loss']
+            del data['final_val_loss']  # On la retire pour ne pas la traiter dans la boucle
+        
+        # Traiter les métriques de couple
+        for key, d in data.items():
+            if key == 'final_val_loss':  # On ignore la final_val_loss ici car déjà traitée
+                continue
             mean_errors.append(d["mean_error"])
             std_errors.append(d["std_error"])
             percentage_errors.append(d["percentage_error"])
@@ -702,10 +711,8 @@ class Validator:
                 rmse_errors.append(d["rmse_error"])
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
-            if "val_loss" in d:
-                val_losses.append(d["val_loss"])
 
-        
+
         metrics = {
             "mean_error": (np.mean(mean_errors), np.std(mean_errors)),
             "std_error": (np.mean(std_errors), np.std(std_errors)),
@@ -715,7 +722,8 @@ class Validator:
             "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
             "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if len(rmse_errors) >= 10 else (None, None),
             "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None),
-            "val_loss": (np.mean(val_losses), np.std(val_losses)) if val_losses else (None, None)
+
+            "final_val_loss": (final_val_loss, None) if final_val_loss is not None else (None, None)
         }
         return metrics
     def plot_stats(self):
@@ -926,7 +934,7 @@ class Validator:
         self.sequence_length_distribution_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence digit stats")
         self.sequence_digit_stats(self.validation_folder_path / generated_dataset_path)
- 
+  
         self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences")
         self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)

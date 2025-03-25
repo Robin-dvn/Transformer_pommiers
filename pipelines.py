@@ -387,10 +387,13 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     # Lecture des statistiques de validation
     with open(experiment_path / "generated_dataset_validation_stats.json", "r") as f:
         stats = json.load(f)
-
+    # Stockage de la perte de validation dans le validator pour retoui
+    stats["final_val_loss"] = final_val_loss
+    with open(experiment_path / "generated_dataset_validation_stats.json", "w") as f:
+        json.dump(stats, f)
     # Calcul des métriques globales
     metrics = validator.compute_metrics(stats)
-    metrics["final_val_loss"] = final_val_loss
+
     # Si on est dans un trial Optuna, on enregistre toutes les métriques
     if trial is not None:
         # Enregistrement de la perte de validation finale (moyenne sur les 20 dernières époques)
