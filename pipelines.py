@@ -405,15 +405,17 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
                 trial.set_user_attr(f'{metric_name}_mean', mean)
                 trial.set_user_attr(f'{metric_name}_std', std)
 
-
+    print("bbb")
     # Fermeture de la run wandb avec ou sans synchronisation en ligne
     if sync_wandb:
+        print("aaaa")
         # On termine d'abord la run en mode offline
         wandb_run.finish(quiet=True, sync=False)
         # Puis on synchronise en ligne
         print("[INFO] Synchronisation des données wandb en ligne...")
         subprocess.run(["wandb", "sync", str( "wandb" / "latest-run")])
     else:
+        print("cccc")
         wandb_run.finish(quiet=True, sync=False)
 
     return validator
