@@ -2,7 +2,7 @@ from pipelines import train_decoder_only, train_generate_validate_pipeline
 
 if __name__ == "__main__":
     # Variable pour contrôler si on fait un test ou une version complète
-    test = True  # Mettre à False pour la version complète
+    test = False  # Mettre à False pour la version complète
 
     if test:
         # Configuration de base pour test
