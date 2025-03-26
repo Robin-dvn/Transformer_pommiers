@@ -761,7 +761,7 @@ class Validator:
         fig.update_layout(title="Statistics Table")
         if self.show: fig.show()
     
-    def plot_stats_graph(self, filepaths, experiment_paths=None):
+    def plot_stats_graph(self, filepaths=None, experiment_paths=None):
         """
         Affiche un graphique des statistiques à partir de fichiers JSON.
 
@@ -774,7 +774,8 @@ class Validator:
 
         # Si experiment_paths est fourni, construire les filepaths
         if experiment_paths:
-            filepaths = [Path(exp_path) / "generated_dataset_validationstats.json" for exp_path in experiment_paths]
+            filepaths = [Path(exp_path) / "generated_dataset_validation_stats.json" for exp_path in experiment_paths]
+
 
         # Calculer les métriques pour chaque fichier
         metrics_by_file = {}
@@ -813,7 +814,7 @@ class Validator:
         # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
         has_full_rmse = any(metrics_by_file[name]["rmse_error"][0] is not None for name in metrics_by_file)
 
-        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "val_loss"]
+        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss"]
         title_list = [
             "Moyenne des erreurs<br>de moyenne de longueurs",
             "Moyenne des erreurs<br>de std de longueurs",
@@ -937,8 +938,8 @@ class Validator:
   
         self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences")
-        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
-        self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
+        # self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
+        # self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
         # self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
         # self.plot_stats()
 
@@ -952,16 +953,48 @@ if __name__ == "__main__":
     # Création d'une instance de Validator sans modèle
     validator = Validator(show=True)
     
-    # Liste des dossiers d'expériences à comparer
+    # Liste des dossiers d'expériences à valider
     experiment_paths = [
-        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250324-101709",
-        "experiments/DO_NBL-15_DM-32_DFF-2048_TS-20250324-101709",
-        "experiments/DO_NBL-15_DM-32_DFF-512_TS-20250324-101709"
+        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250325-162025",
+        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250325-210435",
+        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250326-014926"
     ]
     
     # Conversion en objets Path
     experiment_paths = [Path(path) for path in experiment_paths]
     
-    # Test de la fonction plot_stats_graph avec les dossiers d'expérimentation
-    print("[INFO] Génération du graphique de comparaison des statistiques")
+    
+    # Exécution des validations pour chaque expérience
+    # for exp_path in experiment_paths:
+    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+    #     validator.validation_folder_path = exp_path
+    #     # Chemins des fichiers
+    #     generated_dataset_path =  "generated_dataset.csv"
+    #     stats_dataset_path = "generated_dataset_validation_stats.json"
+        
+    #     # Exécution de la validation pipeline
+    #     # validator.validation_pipeline(
+    #     #     generated_dataset_path=generated_dataset_path,
+    #     #     stats_dataset_path=stats_dataset_path,
+    #     #     windows=True,
+    #     #     show=True
+    #     # )
+        
+    #     # Exécution des validations supplémentaires
+    #     print("[INFO] Validation RMSE et log probability sequence metric")
+    #     validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
+    #         generated_dataset_path=generated_dataset_path,
+    #         stats_file_path=stats_dataset_path,
+    #         validation_folder_path=exp_path,
+    #         windows=False
+    #     )
+        
+    #     print("[INFO] Validation log prob distribution of sequences")
+    #     validator.log_prob_distribution_of_sequences(
+    #         generated_dataset_path=generated_dataset_path,
+    #         from_csv=True
+    #     )
+    
+    # Affichage du graphique de comparaison final
+    print("\n[INFO] Génération du graphique de comparaison des statistiques")
     validator.plot_stats_graph(experiment_paths=experiment_paths)

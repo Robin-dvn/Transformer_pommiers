@@ -55,21 +55,22 @@ def process_csv_estimation(csvpath):
         if line.startswith("OUTPUT") and not line.startswith("OUTPUT_PROCESS"):
             observation_values.extend(line.split("\t")[2:])  # Ignorer "OUTPUT"
 
-    # Extraire les paramètres de durée
+    # Extraire les parametres de duree
     duration_params = []
     for i, line in enumerate(lines):
         if "OCCUPANCY_DISTRIBUTION" in line:
-            # La ligne suivante contient les paramètres
+            # La ligne suivante contient les parametres
             if i + 1 < len(lines):
                 params = lines[i + 1].split("\t")
-                # Extraire les paramètres pertinents
-                for param in params:
+
+                # Extraire les parametres pertinents
+                for j, param in enumerate(params):
                     if param.startswith("PARAMETER") or param.startswith("PROBABILITY"):
-                        duration_params.append(float(param.split()[1]))
-                    elif param.startswith("INF_BOUND"):
-                        duration_params.append(float(param.split()[1]))
-                    elif param.startswith("SUP_BOUND"):
-                        duration_params.append(float(param.split()[1]))
+                        if j + 1 < len(params):
+                            duration_params.append(float(params[j + 1]))
+                    elif param.startswith("INF_BOUND") or param.startswith("SUP_BOUND"):
+                        if j + 1 < len(params):
+                            duration_params.append(float(params[j + 1]))
 
     # Fusionner toutes les valeurs dans un seul vecteur
     all_probabilities = initial_probabilities + transition_values[:-1] + observation_values + duration_params
@@ -98,13 +99,13 @@ def rmse(y_true, y_pred):
 
 def chi_squared(y_true, y_pred):
     """
-    Calcule le Chi-deux entre deux distributions de probabilités.
-    Cette métrique est particulièrement adaptée pour comparer des distributions de probabilités.
+    Calcule le Chi-deux entre deux distributions de probabilites.
+    Cette metrique est particulierement adaptee pour comparer des distributions de probabilites.
     """
     if len(y_true) != len(y_pred):
         raise ValidationError("L'inference du modele de markov a donne des resultats incoherents (taille du vecteur parametres)")
     
-    # Éviter la division par zéro en ajoutant un petit epsilon
+    # eviter la division par zero en ajoutant un petit epsilon
     epsilon = 1e-10
     
     # Calcul du Chi-deux
@@ -116,8 +117,10 @@ class Validator():
     def __init__(self,validation_folder_path):
         self.stats = {}
         self.folder_path = validation_folder_path
-        os.mkdir(self.folder_path+"hsmm")
-        os.mkdir(self.folder_path+"probs")
+        if not os.path.exists(self.folder_path+"hsmm"):
+            os.mkdir(self.folder_path+"hsmm")
+        if not os.path.exists(self.folder_path+"probs"):
+            os.mkdir(self.folder_path+"probs")
 
     def save_stats(self, filepath):
         """
@@ -195,7 +198,7 @@ class Validator():
             vec_markov = process_csv_estimation("data/guide/"+"spread_markov_python_type_{0}_year_{1}.csv".format(type,year))
             vec_transformer = process_csv_estimation(self.folder_path+"hsmm/spread_transformer_type_{0}_year_{1}.csv".format(type,year)) 
 
-            # Calculer les deux métriques
+            # Calculer les deux metriques
             rmse_error = rmse(vec_markov, vec_transformer)
             chi_squared_error = chi_squared(vec_markov, vec_transformer)
 

@@ -1,105 +1,130 @@
-from pathlib import Path
-from torch.utils.data import DataLoader, random_split
-import torch.optim as optim
-import torch.nn as nn
-import torch
-import torch.nn.functional as F
-import wandb
-from tqdm import tqdm
-from collections import Counter
-import numpy as np
-from datetime import datetime
-from time import time
-import json
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.optim.lr_scheduler import CyclicLR
-from EarlyStopping import EarlyStopping
-import optuna
-import subprocess
+"""
+Module de pipelines pour l'entraînement, la génération et la validation de modèles Transformer.
+Ce module contient les fonctions principales pour gérer le workflow complet d'apprentissage.
+"""
 
-# Importer les modules nécessaires (assure-toi que ces fichiers existent)
-from PommierDataset import PommierDatasetDecoderOnly, DynamicPommierDataset, collate_fn_decoder_only, DecoderOnlyDynamicPommierDataset
-from transformer import TransformerDecoderOnly  # Notre modèle décodeur-only
+# Standard library imports
+import json
+import subprocess
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+from time import time
+
+# Third-party imports
+import numpy as np
+import optuna
+import torch
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CyclicLR
+from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
+import wandb
+
+# Local imports
+from EarlyStopping import EarlyStopping
+from PommierDataset import (
+    PommierDatasetDecoderOnly,
+    collate_fn_decoder_only,
+    DecoderOnlyDynamicPommierDataset
+)
+from transformer import TransformerDecoderOnly
 from Validator import Validator
 from ValidationError import ValidationError
 
 def model_size_mb(model):
+    """
+    Calcule la taille du modèle en mégaoctets.
+
+    Args:
+        model: Le modèle PyTorch dont on veut calculer la taille
+
+    Returns:
+        float: Taille du modèle en mégaoctets
+    """
     total_size = sum(p.numel() * p.element_size() for p in model.parameters() if p.requires_grad)
     return total_size / (1024 ** 2)
 
 def calculate_class_weights(dataset, vocab_size):
-    # Compter les occurrences de chaque jeton
+    """
+    Calcule les poids des classes pour gérer le déséquilibre des données.
+
+    Args:
+        dataset: Dataset contenant les séquences d'entraînement
+        vocab_size (int): Taille du vocabulaire
+
+    Returns:
+        torch.Tensor: Tenseur contenant les poids normalisés pour chaque classe
+    """
     token_counts = Counter()
     for data in dataset:
         input_seq, target_seq, _ = data
         seq = input_seq.tolist() + [target_seq.tolist()[-1]]
         token_counts.update(seq)
 
-    # Calculer les poids en utilisant l'inverse de la fréquence
     total_tokens = sum(token_counts.values())
-    print(f"Total tokens: {total_tokens}")
-    tokens_counts = {token_id: count for token_id, count in token_counts.items()}
-    frequencies = {token_id: count / total_tokens for token_id, count in token_counts.items()}
-    print(f"Frequencies: {frequencies}")
-    print(f"Token counts: {token_counts}")
-    class_weights = {token_id: total_tokens / count for token_id, count in token_counts.items()}
-    print(f"Class weights: {class_weights}")
+    
+    # Calcul des fréquences et des poids
+    frequencies = {
+        token_id: count / total_tokens
+        for token_id, count in token_counts.items()
+    }
+    
+    class_weights = {
+        token_id: total_tokens / count
+        for token_id, count in token_counts.items()
+    }
 
-    # Convertir en tenseur PyTorch
+    # Création et normalisation du tenseur de poids
     weights_tensor = torch.zeros(vocab_size)
     for token_id, weight in class_weights.items():
         weights_tensor[token_id] = weight
-
-    # Normaliser les poids
     weights_tensor = weights_tensor / weights_tensor.sum()
+
+    # Logging des statistiques
+    print(f"Total tokens: {total_tokens}")
+    print(f"Frequencies: {frequencies}")
+    print(f"Token counts: {token_counts}")
+    print(f"Class weights: {class_weights}")
 
     return weights_tensor
 
 def create_config_file(file_path, config_dict):
     """
-    Create a JSON configuration file from a dictionary.
+    Crée un fichier de configuration JSON à partir d'un dictionnaire.
 
     Args:
-        file_path (str or Path): Path to the file where the configuration will be saved.
-        config_dict (dict): Dictionary containing configuration parameters.
+        file_path (str ou Path): Chemin vers le fichier où la configuration sera sauvegardée
+        config_dict (dict): Dictionnaire contenant les paramètres de configuration
+
+    Raises:
+        IOError: Si le fichier ne peut pas être créé ou écrit
+        TypeError: Si config_dict n'est pas un dictionnaire
     """
-    # Convertir les objets Path en chaînes de caractères
-    config_dict_serializable = {k: str(v) if isinstance(v, Path) else v for k, v in config_dict.items()}
+    if not isinstance(config_dict, dict):
+        raise TypeError("config_dict doit être un dictionnaire")
 
-    with open(file_path, 'w') as json_file:
-        json.dump(config_dict_serializable, json_file, indent=4)
+    # Conversion des objets Path en chaînes de caractères pour la sérialisation JSON
+    config_dict_serializable = {
+        k: str(v) if isinstance(v, Path) else v
+        for k, v in config_dict.items()
+    }
 
+    try:
+        with open(file_path, 'w', encoding='utf-8') as json_file:
+            json.dump(config_dict_serializable, json_file, indent=4)
+    except IOError as e:
+        raise IOError(f"Impossible de créer le fichier de configuration: {e}") from e
 
 def train_decoder_only(config_dict, trial=None):
     """
     Entraîne un modèle transformer en mode decoder-only selon la configuration passée.
 
     Args:
-        config_dict (dict): Dictionnaire contenant les paramètres de configuration. Clés attendues :
-            - dataset_path (str ou Path) : Chemin vers le dataset.
-            - seed (int) : Seed pour la reproductibilité.
-            - batch_size (int) : Taille des batches pour l'entraînement et la validation.
-            - val_split (float) : Fraction du dataset utilisée pour la validation.
-            - vocab_size (int) : Taille du vocabulaire.
-            - padding_idx (int) : Indice de padding.
-            - n_head (int) : Nombre de têtes d'attention.
-            - d_model (int) : Dimension du modèle.
-            - nb_layers (int) : Nombre de couches du décodeur.
-            - lr (float) : Taux d'apprentissage.
-            - nb_epoch (int) : Nombre d'époques d'entraînement.
-            - dim_feedforward (int) : Dimension du réseau feedforward.
-            - dynamic (bool) : Indique si un dataset dynamique est utilisé.
-            - scheduler (dict) : Dictionnaire contenant :
-                - name (str) : Type de scheduler parmi ["cyclical", "ReduceOnPlatau", "None"].
-                - params (dict) : Paramètres spécifiques au scheduler.
-            - early_stopping (dict) : Dictionnaire contenant :
-                - name (str) : Type d'early stopping parmi ["patience", "None"].
-                - params (dict) : Paramètres spécifiques à l'early stopping.
-            - continue_training (bool) : Indique si l'entraînement doit reprendre depuis un checkpoint.
-            - checkpoint_path (str ou Path) : Chemin vers le checkpoint si l'entraînement est repris.
-            - auto_precision (bool): Si True, active la précision automatique (torch.cuda.amp).
-    Retour:
-        tuple: (modèle entraîné, chemin vers le dossier de l'expérience, perte de validation finale)
+        config_dict (dict): Dictionnaire contenant les paramètres de configuration
+        trial (optuna.Trial, optional): Trial Optuna pour l'optimisation des hyperparamètres
+
+    Returns:
+        tuple: (modèle entraîné, chemin vers le dossier de l'expérience, perte de validation finale, run wandb)
     """
     # Extract parameters from config_dict
     dataset_path = config_dict['dataset_path']
@@ -131,7 +156,9 @@ def train_decoder_only(config_dict, trial=None):
 
     # Generate a timestamp for the experiment name
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    exp_name = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_TS-{timestamp}"
+    exp_name = (
+        f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_TS-{timestamp}"
+    )
     experiment_path = Path("experiments") / exp_name
     experiment_path.mkdir(parents=True, exist_ok=True)
     print(str(experiment_path / "config.json"))
@@ -149,12 +176,29 @@ def train_decoder_only(config_dict, trial=None):
             'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11,
             'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16
         }
-        dynamic_dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id, 200000, 4, 70)
-        train_loader = DataLoader(dynamic_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_decoder_only)
+        dynamic_dataset = DecoderOnlyDynamicPommierDataset(
+            vocab_to_id, 200000, 4, 70
+        )
+        train_loader = DataLoader(
+            dynamic_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn_decoder_only
+        )
     else:
-        train_loader = DataLoader(train_split, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_decoder_only)
+        train_loader = DataLoader(
+            train_split,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn_decoder_only
+        )
 
-    val_loader = DataLoader(val_split, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_decoder_only)
+    val_loader = DataLoader(
+        val_split,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_fn_decoder_only
+    )
 
     # Model creation
     model = TransformerDecoderOnly(
@@ -192,29 +236,36 @@ def train_decoder_only(config_dict, trial=None):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     size_mb = model_size_mb(model)
 
-    # Initialize wandb for experiment tracking, en ajoutant le paramètre auto_precision
+    # Initialize wandb for experiment tracking
+    wandb_config = {
+        "learning_rate": lr,
+        "val_split": config_dict['val_split'],
+        "architecture": exp_name,
+        "dataset": "100 sample de chaque type",
+        "batch_size": batch_size,
+        "dimension_model": d_model,
+        "number_of_heads": n_head,
+        "epochs": nb_epoch,
+        "dynamic": dynamic,
+        "num_layers": nb_layers,
+        "num_params": num_params,
+        "dim_feedforward": dim_feedforward,
+        "scheduler": scheduler_config['name'],
+        "scheduler_params": (
+            scheduler_config['params'] if scheduler_config['name'] != "None" 
+            else None
+        ),
+        "early_stopping": early_stopping_config['name'],
+        "early_stopping_params": (
+            early_stopping_config['params'] if early_stopping_config['name'] != "None"
+            else None
+        ),
+        "auto_precision": auto_precision
+    }
     wandb.init(
         name=exp_name,
         project="Topologie-Pommiers",
-        config={
-            "learning_rate": lr,
-            "val_split": config_dict['val_split'],
-            "architecture": exp_name,
-            "dataset": "100 sample de chaque type",
-            "batch_size": batch_size,
-            "dimension_model": d_model,
-            "number_of_heads": n_head,
-            "epochs": nb_epoch,
-            "dynamic": dynamic,
-            "num_layers": nb_layers,
-            "num_params": num_params,
-            "dim_feedforward": dim_feedforward,
-            "scheduler": scheduler_config['name'],
-            "scheduler_params": scheduler_config['params'] if scheduler_config['name'] != "None" else None,
-            "early_stopping": early_stopping_config['name'],
-            "early_stopping_params": early_stopping_config['params'] if early_stopping_config['name'] != "None" else None,
-            "auto_precision": auto_precision
-        },
+        config=wandb_config,
         mode="offline"
     )
 
@@ -224,7 +275,6 @@ def train_decoder_only(config_dict, trial=None):
     # Calculate class weights
     class_weights = calculate_class_weights(static_dataset, vocab_size)
     class_weights = class_weights.to(device)
-    criterion_weighted = torch.nn.CrossEntropyLoss(weight=class_weights, ignore_index=padding_idx)
     criterion_unweighted = torch.nn.CrossEntropyLoss(ignore_index=padding_idx)
 
     # Setup GradScaler si auto_precision est activé
@@ -236,20 +286,21 @@ def train_decoder_only(config_dict, trial=None):
     val_losses = []  # Liste pour stocker les pertes de validation
     for epoch in tqdm(range(nb_epoch), colour="green"):
         model.train()
-        total_train_loss_weighted = 0
         total_train_loss_unweighted = 0
-        for input_seq, target_seq, _ in tqdm(train_loader, desc=f"Epoch {epoch} - Train", colour="red"):
-
+        for input_seq, target_seq, _ in tqdm(
+            train_loader, 
+            desc=f"Epoch {epoch} - Train", 
+            colour="red"
+        ):
             if device == "cuda":
                 mem_alloc = torch.cuda.memory_allocated(device) / 1024**2  # en Mo
                 wandb.log({"gpu_memory_allocated_MB": mem_alloc}, step=global_batch)
             input_seq = input_seq.to(device)
             target_seq = target_seq.to(device)
-           
             padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
 
             if auto_precision:
-                with torch.amp.autocast(device_type=device):    
+                with torch.amp.autocast(device_type=device):
                     logits = model(input_seq, padding_mask)
                     logits_trim = logits[:, 2:, :]
                     targets_trim = target_seq[:, 2:]
@@ -282,10 +333,13 @@ def train_decoder_only(config_dict, trial=None):
             global_batch += 1
 
         model.eval()
-        total_eval_loss_weighted = 0
         total_eval_loss_unweighted = 0
         with torch.no_grad():
-            for input_seq, target_seq, loss_mask in tqdm(val_loader, desc=f"Epoch {epoch} - Val", colour="yellow"):
+            for input_seq, target_seq, loss_mask in tqdm(
+                val_loader, 
+                desc=f"Epoch {epoch} - Val", 
+                colour="yellow"
+            ):
                 input_seq = input_seq.to(device)
                 target_seq = target_seq.to(device)
                 loss_mask = loss_mask.to(device)
@@ -310,19 +364,21 @@ def train_decoder_only(config_dict, trial=None):
                 raise optuna.TrialPruned()
             
             # Mise à jour de la meilleure perte de validation
-            if avg_val_loss_unweighted < best_val_loss:
-                best_val_loss = avg_val_loss_unweighted
+            best_val_loss = min(best_val_loss, avg_val_loss_unweighted)
 
         wandb.log({
             "train_loss_epochs": avg_train_loss_unweighted,
             "val_loss_epochs": avg_val_loss_unweighted
         })
-        tqdm.write(f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, val loss unweighted = {avg_val_loss_unweighted:.4f}")
+        tqdm.write(
+            f"[INFO] Epoch {epoch} : train loss unweighted = {avg_train_loss_unweighted:.4f}, "
+            f"val loss unweighted = {avg_val_loss_unweighted:.4f}"
+        )
         if scheduler is not None and scheduler_config['name'] == "ReduceOnPlatau":
             scheduler.step(avg_val_loss_unweighted)
 
         if early_stopping:
-            early_stopping(avg_val_loss_unweighted,model)
+            early_stopping(avg_val_loss_unweighted, model)
             if early_stopping.early_stop:
                 print("Early stopping triggered")
                 break
@@ -336,10 +392,9 @@ def train_decoder_only(config_dict, trial=None):
     last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
 
     # Si on est dans un trial Optuna, on utilise la moyenne des 20 dernières époques
-    final_val_loss = last_20_epochs_val_loss 
+    final_val_loss = last_20_epochs_val_loss
 
     return model, experiment_path, final_val_loss, wandb.run
-
 
 def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     """
@@ -385,11 +440,11 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
     # Lecture des statistiques de validation
-    with open(experiment_path / "generated_dataset_validation_stats.json", "r") as f:
+    with open(experiment_path / "generated_dataset_validation_stats.json", "r", encoding='utf-8') as f:
         stats = json.load(f)
-    # Stockage de la perte de validation dans le validator pour retoui
+    # Stockage de la perte de validation dans le validator pour retour
     stats["final_val_loss"] = final_val_loss
-    with open(experiment_path / "generated_dataset_validation_stats.json", "w") as f:
+    with open(experiment_path / "generated_dataset_validation_stats.json", "w", encoding='utf-8') as f:
         json.dump(stats, f)
     # Calcul des métriques globales
     metrics = validator.compute_metrics(stats)
@@ -405,17 +460,22 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
                 trial.set_user_attr(f'{metric_name}_mean', mean)
                 trial.set_user_attr(f'{metric_name}_std', std)
 
-    print("bbb")
     # Fermeture de la run wandb avec ou sans synchronisation en ligne
     if sync_wandb:
-        print("aaaa")
         # On termine d'abord la run en mode offline
         wandb_run.finish(quiet=True)
         # Puis on synchronise en ligne
         print("[INFO] Synchronisation des données wandb en ligne...")
-        subprocess.run(["wandb", "sync", str( "wandb/latest-run")])
+        try:
+            subprocess.run(
+                ["wandb", "sync", str("wandb/latest-run")],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"[WARNING] Erreur lors de la synchronisation wandb: {e.stderr}")
     else:
-        print("cccc")
         wandb_run.finish(quiet=True)
 
     return validator
