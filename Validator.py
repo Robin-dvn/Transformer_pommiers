@@ -711,7 +711,7 @@ class Validator:
                 rmse_errors.append(d["rmse_error"])
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
-
+        print(rmse_errors)
 
         metrics = {
             "mean_error": (np.mean(mean_errors), np.std(mean_errors)),
@@ -720,11 +720,12 @@ class Validator:
             "js_distance": (np.mean(js_distances), np.std(js_distances)) if js_distances else (None, None),
             "digit_mean_errors": (np.mean(digit_mean_vals), np.std(digit_mean_vals)),
             "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
-            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if len(rmse_errors) >= 10 else (None, None),
+            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if len(rmse_errors) >= 8 else (None, None),
             "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None),
 
             "final_val_loss": (final_val_loss, None) if final_val_loss is not None else (None, None)
         }
+        print(metrics)
         return metrics
     def plot_stats(self):
         """
@@ -812,8 +813,8 @@ class Validator:
             raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
 
         # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
-        has_full_rmse = any(metrics_by_file[name]["rmse_error"][0] is not None for name in metrics_by_file)
-
+        # has_full_rmse = any(metrics_by_file[name]["rmse_error"][0] is not None for name in metrics_by_file)
+        has_full_rmse = True
         metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss"]
         title_list = [
             "Moyenne des erreurs<br>de moyenne de longueurs",
@@ -965,12 +966,12 @@ if __name__ == "__main__":
     
     
     # Exécution des validations pour chaque expérience
-    # for exp_path in experiment_paths:
-    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
-    #     validator.validation_folder_path = exp_path
-    #     # Chemins des fichiers
-    #     generated_dataset_path =  "generated_dataset.csv"
-    #     stats_dataset_path = "generated_dataset_validation_stats.json"
+    for exp_path in experiment_paths:
+        print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+        validator.validation_folder_path = exp_path
+        # Chemins des fichiers
+        generated_dataset_path =  "generated_dataset.csv"
+        stats_dataset_path = "generated_dataset_validation_stats.json"
         
     #     # Exécution de la validation pipeline
     #     # validator.validation_pipeline(
@@ -980,14 +981,14 @@ if __name__ == "__main__":
     #     #     show=True
     #     # )
         
-    #     # Exécution des validations supplémentaires
-    #     print("[INFO] Validation RMSE et log probability sequence metric")
-    #     validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
-    #         generated_dataset_path=generated_dataset_path,
-    #         stats_file_path=stats_dataset_path,
-    #         validation_folder_path=exp_path,
-    #         windows=False
-    #     )
+        # Exécution des validations supplémentaires
+        # print("[INFO] Validation RMSE et log probability sequence metric")
+        # validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
+        #     generated_dataset_path=generated_dataset_path,
+        #     stats_file_path=stats_dataset_path,
+        #     validation_folder_path=exp_path,
+        #     windows=False
+        # )
         
     #     print("[INFO] Validation log prob distribution of sequences")
     #     validator.log_prob_distribution_of_sequences(

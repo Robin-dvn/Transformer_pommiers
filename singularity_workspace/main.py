@@ -73,7 +73,7 @@ def process_csv_estimation(csvpath):
                             duration_params.append(float(params[j + 1]))
 
     # Fusionner toutes les valeurs dans un seul vecteur
-    all_probabilities = initial_probabilities + transition_values[:-1] + observation_values + duration_params
+    all_probabilities = initial_probabilities + transition_values[:-1] + observation_values 
     numeric_probabilities = []
     for value in all_probabilities:
         try:
@@ -110,7 +110,7 @@ def chi_squared(y_true, y_pred):
     
     # Calcul du Chi-deux
     chi_squared = sum((y_t - y_p) ** 2 / (y_t + epsilon) for y_t, y_p in zip(y_true, y_pred))
-    
+    print(chi_squared) 
     return chi_squared
 
 class Validator():
@@ -201,7 +201,7 @@ class Validator():
             # Calculer les deux metriques
             rmse_error = rmse(vec_markov, vec_transformer)
             chi_squared_error = chi_squared(vec_markov, vec_transformer)
-
+            # print(rmse_error, chi_squared_error)
             return rmse_error, chi_squared_error
         
         for year in tqdm(range(1, 6)):
