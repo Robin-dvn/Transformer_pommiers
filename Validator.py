@@ -691,16 +691,24 @@ class Validator:
         sequence_length_js_distances = []
         val_losses = []
         final_val_loss = None
+        series_count_errors = {i: [] for i in range(5)}  # Pour chaque chiffre
+        series_mean_errors = {i: [] for i in range(5)}   # Pour chaque chiffre
+        series_std_errors = {i: [] for i in range(5)}    # Pour chaque chiffre
+        num_params = None
         
-        # Récupérer la final_val_loss au niveau parent si elle existe
-        if 'final_val_loss' in data:
-            final_val_loss = data['final_val_loss']
-            del data['final_val_loss']  # On la retire pour ne pas la traiter dans la boucle
+        # Récupérer la final_val_loss et le nombre de paramètres au niveau parent si ils existent
+        if 'final_val' in data:
+            final_val_loss = data['final_val']
+# On la retire pour ne pas la traiter dans la boucle
+        if 'num_params' in data:
+            num_params = data['num_params']
+
         
         # Traiter les métriques de couple
         for key, d in data.items():
-            if key == 'final_val_loss':  # On ignore la final_val_loss ici car déjà traitée
+            if key in ['final_val', 'num_params']:  # On ignore ces clés car déjà traitées
                 continue
+            # print(d)
             mean_errors.append(d["mean_error"])
             std_errors.append(d["std_error"])
             percentage_errors.append(d["percentage_error"])
@@ -709,36 +717,47 @@ class Validator:
             digit_mean_vals.extend(d["digit_mean_errors"].values())
             digit_std_vals.extend(d["digit_std_errors"].values())
             if "rmse_error" in d:
-                rmse_errors.append((key, d["rmse_error"]))
+                rmse_errors.append(d["rmse_error"])
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
-        print(rmse_errors)
-        # Calculer la moyenne des RMSE uniquement sur les couples communs
-        if rmse_errors:
-            # Créer un dictionnaire pour stocker les RMSE par couple
-            rmse_by_couple = {}
-            for key, rmse in rmse_errors:
-                if key not in rmse_by_couple:
-                    rmse_by_couple[key] = []
-                rmse_by_couple[key].append(rmse)
             
-            # Trouver les couples qui sont présents dans tous les fichiers
-            common_couples = [key for key, values in rmse_by_couple.items() 
-                            if len(values) == len(rmse_errors)]
-            print(f"[INFO] Couples communs pour le calcul de la moyenne des RMSE : {common_couples}")
-            
-            # Calculer la moyenne uniquement sur les couples communs
-            if common_couples:
-                common_rmse_values = [rmse for key, rmse in rmse_errors 
-                                    if key in common_couples]
-                rmse_mean = np.mean(common_rmse_values)
-                rmse_std = np.std(common_rmse_values)
+            # Collecter les erreurs de séries pour chaque chiffre
+            for digit in range(5):
+                if f"digit_{digit}_series_count_error" in d:
+                    series_count_errors[digit].append(d[f"digit_{digit}_series_count_error"])
+                if f"digit_{digit}_series_mean_error" in d:
+                    series_mean_errors[digit].append(d[f"digit_{digit}_series_mean_error"])
+                if f"digit_{digit}_series_std_error" in d:
+                    series_std_errors[digit].append(d[f"digit_{digit}_series_std_error"])
+
+        # Calculer les métriques globales pour toutes les séries
+        series_metrics = {}
+        all_series_count_errors = []
+        all_series_mean_errors = []
+        all_series_std_errors = []
+        
+        for digit in range(5):
+            if series_count_errors[digit] and series_mean_errors[digit] and series_std_errors[digit]:
+                series_metrics[f"digit_{digit}_series_count_error"] = (np.mean(series_count_errors[digit]), np.std(series_count_errors[digit]))
+                series_metrics[f"digit_{digit}_series_mean_error"] = (np.mean(series_mean_errors[digit]), np.std(series_mean_errors[digit]))
+                series_metrics[f"digit_{digit}_series_std_error"] = (np.mean(series_std_errors[digit]), np.std(series_std_errors[digit]))
+                all_series_count_errors.extend(series_count_errors[digit])
+                all_series_mean_errors.extend(series_mean_errors[digit])
+                all_series_std_errors.extend(series_std_errors[digit])
             else:
-                rmse_mean = None
-                rmse_std = None
+                series_metrics[f"digit_{digit}_series_count_error"] = (None, None)
+                series_metrics[f"digit_{digit}_series_mean_error"] = (None, None)
+                series_metrics[f"digit_{digit}_series_std_error"] = (None, None)
+        
+        # Calculer les métriques globales pour toutes les séries
+        if all_series_count_errors and all_series_mean_errors and all_series_std_errors:
+            series_metrics["series_count_error"] = (np.mean(all_series_count_errors), np.std(all_series_count_errors))
+            series_metrics["series_mean_error"] = (np.mean(all_series_mean_errors), np.std(all_series_mean_errors))
+            series_metrics["series_std_error"] = (np.mean(all_series_std_errors), np.std(all_series_std_errors))
         else:
-            rmse_mean = None
-            rmse_std = None
+            series_metrics["series_count_error"] = (None, None)
+            series_metrics["series_mean_error"] = (None, None)
+            series_metrics["series_std_error"] = (None, None)
 
         metrics = {
             "mean_error": (np.mean(mean_errors), np.std(mean_errors)),
@@ -747,11 +766,13 @@ class Validator:
             "js_distance": (np.mean(js_distances), np.std(js_distances)) if js_distances else (None, None),
             "digit_mean_errors": (np.mean(digit_mean_vals), np.std(digit_mean_vals)),
             "digit_std_errors": (np.mean(digit_std_vals), np.std(digit_std_vals)),
-            "rmse_error": (rmse_mean, rmse_std),
+            "rmse_error": (np.mean(rmse_errors), np.std(rmse_errors)) if len(rmse_errors) >= 8 else (None, None),
             "sequence_length_js_distance": (np.mean(sequence_length_js_distances), np.std(sequence_length_js_distances)) if sequence_length_js_distances else (None, None),
-            "final_val_loss": (final_val_loss, None) if final_val_loss is not None else (None, None)
+            "final_val_loss": (final_val_loss, None) if final_val_loss is not None else (None, None),
+            "num_params": (num_params, None) if num_params is not None else (None, None),
+            **series_metrics  # Ajouter les métriques de séries
         }
-        print(metrics)
+        # print(metrics)
         return metrics
     def plot_stats(self):
         """
@@ -802,76 +823,46 @@ class Validator:
         # Si experiment_paths est fourni, construire les filepaths
         if experiment_paths:
             filepaths = [Path(exp_path) / "generated_dataset_validation_stats.json" for exp_path in experiment_paths]
-
+        print(filepaths)
         # Calculer les métriques pour chaque fichier
         metrics_by_file = {}
-        all_rmse_errors = {}  # Pour stocker les RMSE par couple pour chaque fichier
 
         i=0 
         for filepath in filepaths:
             if not os.path.exists(filepath):
                 print(f"Attention: Le fichier {filepath} n'existe pas")
                 continue
-            try:
-                data = json.loads(Path(filepath).read_text())
-                
-                # Si experiment_paths est fourni, récupérer le nom depuis le fichier config
-                if experiment_paths:
-                    exp_path = Path(filepath).parent
-                    config_path = exp_path / "config.json"
-                    if os.path.exists(config_path):
-                        with open(config_path, 'r') as f:
-                            config = json.load(f)
-                            graph_name = config.get('graph_name', Path(filepath).name)
-                    else:
-                        graph_name = Path(filepath).name + f"_{i}"
+
+            data = json.loads(Path(filepath).read_text())
+            
+            # Si experiment_paths est fourni, récupérer le nom depuis le fichier config
+            if experiment_paths:
+                exp_path = Path(filepath).parent
+                config_path = exp_path / "config.json"
+                if os.path.exists(config_path):
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                        graph_name = config.get('graph_name', Path(filepath).name)
                 else:
                     graph_name = Path(filepath).name + f"_{i}"
-                
-                # Calculer les métriques de base
-                metrics = self.compute_metrics(data)
-                
-                # Stocker les RMSE par couple
-                for key, value in data.items():
-                    if "rmse_error" in value:
-
-                        if key not in all_rmse_errors:
-                            all_rmse_errors[key] = {}
-                        all_rmse_errors[key][graph_name] = value["rmse_error"]
-                metrics_by_file[graph_name] = metrics
+            else:
+                graph_name = Path(filepath).name + f"_{i}"
+            
+            metrics_by_file[graph_name] = self.compute_metrics(data)
                     
-            except Exception as e:
-                print(f"Erreur lors de la lecture du fichier {filepath}: {str(e)}")
-                continue
-            i+=1
+
+        i+=1
 
         if not metrics_by_file:
             raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
-            
-        # Calculer la moyenne des RMSE uniquement sur les couples communs
-        if all_rmse_errors:
-            # Trouver les couples qui sont présents dans tous les fichiers
-            common_couples = [key for key, values in all_rmse_errors.items() 
-                            if len(values) == len(metrics_by_file)]
-            print(f"[INFO] Couples communs pour le calcul de la moyenne des RMSE : {common_couples}")
-            print(f"[INFO] Nombre de fichiers : {len(metrics_by_file)}")
-            print(f"[INFO] Nombre de couples communs : {len(common_couples)}")
-            
-            # Calculer la moyenne pour chaque fichier uniquement sur les couples communs
-            for graph_name in metrics_by_file:
-                if common_couples:
-                    common_rmse_values = [all_rmse_errors[couple][graph_name] 
-                                        for couple in common_couples 
-                                        if graph_name in all_rmse_errors[couple]]
-                    metrics_by_file[graph_name]["rmse_error"] = (
-                        np.mean(common_rmse_values),
-                        np.std(common_rmse_values)
-                    )
-                else:
-                    metrics_by_file[graph_name]["rmse_error"] = (None, None)
 
-        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss"]
-        title_list = [
+        # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
+        has_full_rmse = True
+        
+        # Liste des métriques de base
+        base_metric_list = ["num_params", "mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss", "series_count_error", "series_mean_error", "series_std_error"]
+        base_title_list = [
+            "Nombre de paramètres<br>du réseau",
             "Moyenne des erreurs<br>de moyenne de longueurs",
             "Moyenne des erreurs<br>de std de longueurs",
             "Pourcentage de terminal<br>fate mal prédit",
@@ -880,8 +871,20 @@ class Validator:
             "Moyenne des erreurs de std<br>d'occurences de chaque chiffre",
             "Moyenne des RMSE entre les paramètres<br>des matrices de transitions",
             "Distance de Jensen Shannon<br>des distributions de longueurs",
-            "Moyenne de la loss de validation<br>sur les 20 dernières epochs"
+            "Moyenne de la loss de validation<br>sur les 20 dernières epochs",
+            "Erreur moyenne du nombre<br>de séries (tous chiffres)",
+            "Erreur moyenne de la taille<br>des séries (tous chiffres)",
+            "Erreur moyenne de std<br>des séries (tous chiffres)"
         ]
+        
+        # Supprimer les métriques individuelles par chiffre
+        metric_list = base_metric_list
+        title_list = base_title_list
+
+        # Mettre à jour les valeurs RMSE à 0 pour tous les fichiers si elle n'est pas complète
+        if not has_full_rmse:
+            for name in metrics_by_file:
+                metrics_by_file[name]["rmse_error"] = (None, None)
 
         graph_names = list(metrics_by_file.keys())
         
@@ -889,48 +892,111 @@ class Validator:
         colors = px.colors.qualitative.Plotly
         color_map = {name: colors[i % len(colors)] for i, name in enumerate(graph_names)}
         
-        # Création d'une grille 3x3 pour les subplots
-        fig = make_subplots(rows=3, cols=3, subplot_titles=title_list)
+        # Calculer le nombre de lignes et colonnes nécessaires de manière responsive
+        n_metrics = len(metric_list)
+        
+        # Déterminer le nombre de colonnes en fonction de la largeur de l'écran
+        # On suppose une largeur minimale de 400px par graphique
+        min_graph_width = 400
+        screen_width = 1920  # Largeur par défaut, peut être ajustée
+        n_cols = max(1, min(3, screen_width // min_graph_width))
+        n_rows = (n_metrics + n_cols - 1) // n_cols
+        
+        # Création de la grille de subplots
+        fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=title_list)
  
         # Pour chaque métrique, ajouter un trace par fichier avec sa couleur
         for i, metric in enumerate(metric_list):
-            row = i // 3 + 1
-            col = i % 3 + 1
+            row = i // n_cols + 1
+            col = i % n_cols + 1
             for name in graph_names:
                 m, s = metrics_by_file[name][metric]
                 m = 0 if m is None else m
                 s = 0 if s is None else s
-                fig.add_trace(
-                    go.Bar(
-                        x=[name],
-                        y=[m],
-                        error_y=dict(
-                            type="data",
-                            array=[s],
-                            visible=True,
-                            thickness=1,
-                            width=1
+                
+                # Pour le nombre de paramètres, on utilise une échelle logarithmique
+                if metric == "num_params":
+                    fig.add_trace(
+                        go.Bar(
+                            x=[name],
+                            y=[np.log10(m) if m > 0 else 0],
+                            error_y=dict(
+                                type="data",
+                                array=[s],
+                                visible=True,
+                                thickness=1,
+                                width=1
+                            ),
+                            marker_color=color_map[name],
+                            name=name,
+                            showlegend=False
                         ),
-                        marker_color=color_map[name],
-                        name=name,
-                        showlegend=False,
-                    ),
-                    row=row, col=col
-                )
+                        row=row, col=col
+                    )
+                    # Mettre à jour l'axe y pour afficher les valeurs en échelle logarithmique
+                    fig.update_yaxes(type="log", title_text="log10(Nombre de paramètres)", row=row, col=col)
+                else:
+                    fig.add_trace(
+                        go.Bar(
+                            x=[name],
+                            y=[m],
+                            error_y=dict(
+                                type="data",
+                                array=[s],
+                                visible=True,
+                                thickness=1,
+                                width=1
+                            ),
+                            marker_color=color_map[name],
+                            name=name,
+                            showlegend=False
+                        ),
+                        row=row, col=col
+                    )
         
+        # Calculer la hauteur et la largeur en fonction du nombre de lignes et colonnes
+        height_per_row = 400  # Hauteur par ligne en pixels
+        width_per_col = min_graph_width  # Largeur par colonne en pixels
+        total_height = height_per_row * n_rows
+        total_width = width_per_col * n_cols
+
         fig.update_layout(
-            title=dict(text = "Synthèse des Metrics de validation à nombre de paramètres égaux  pour des FeedForward Layer différentes",x=0.5,font=dict(family="Arial", size=20, color="black", weight="bold")), 
+            title=dict(
+                text="Synthèse des Metrics de validation à nombre de paramètres égaux pour des FeedForward Layer différentes",
+                x=0.5,
+                font=dict(family="Arial", size=24, color="black", weight="bold")
+            ),
             barmode="group",
-            xaxis=dict(tickfont=dict(size=8)),  # Taille de police pour l'axe x
-            xaxis2=dict(tickfont=dict(size=8)),  # Pour le deuxième subplot
-            xaxis3=dict(tickfont=dict(size=8)),  # Pour le troisième subplot
-            xaxis4=dict(tickfont=dict(size=8)),  # Pour le quatrième subplot
-            xaxis5=dict(tickfont=dict(size=8)),  # Pour le cinquième subplot
-            xaxis6=dict(tickfont=dict(size=8)),  # Pour le sixième subplot
-            xaxis7=dict(tickfont=dict(size=8)),  # Pour le septième subplot
-            xaxis8=dict(tickfont=dict(size=8)),  # Pour le huitième subplot
-            xaxis9=dict(tickfont=dict(size=8))   # Pour le neuvième subplot
+            height=total_height,
+            width=total_width,
+            margin=dict(t=100, b=50, l=50, r=50),
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font=dict(size=12)
+            ),
+            # autosize=True  # Activer le redimensionnement automatique
         )
+
+        # Ajuster la taille des polices pour les titres des sous-graphiques
+        fig.update_annotations(font_size=14)
+        
+        # Ajuster la taille des polices pour les axes
+        fig.update_xaxes(title_font_size=12, tickfont_size=10)
+        fig.update_yaxes(title_font_size=12, tickfont_size=10)
+
+        # Configurer le mode responsive
+        fig.update_layout(
+
+            # autosize=True,
+            height=total_height,
+            width=screen_width
+        )
+
         fig.show()
 
     def save_stats(self, filepath):
@@ -986,8 +1052,133 @@ class Validator:
             ]
             subprocess.run(script)
     
+    def sequence_series_analysis(self, generated_dataset_path):
+        """
+        Analyse les séries de chiffres dans les séquences et compare les statistiques entre le dataset original et généré.
+
+        Args:
+            generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
+        """
+        dataset = self.df.copy()
+        generated_dataset = pd.read_csv(generated_dataset_path)
+        dataset['Source'] = 'Dataset'
+        generated_dataset['Source'] = 'Generated Dataset'
+        combined_dataset = pd.concat([dataset, generated_dataset])
+        unique_pairs = combined_dataset[['Observation', 'Year']].drop_duplicates()
+
+        def count_series(sequence, digit):
+            """Compte le nombre de séries d'un chiffre donné et leur taille moyenne."""
+            series = []
+            current_series = 0
+            
+            for char in sequence:
+                if char == str(digit):
+                    current_series += 1
+                elif current_series > 0:
+                    series.append(current_series)
+                    current_series = 0
+            
+            if current_series > 0:
+                series.append(current_series)
+            
+            # Si aucune série n'est trouvée, retourner 0 pour le nombre et None pour la moyenne
+            if not series:
+                return 0, None, None
+            
+            return len(series), np.mean(series), np.std(series)
+
+        for _, row in unique_pairs.iterrows():
+            observation = row['Observation']
+            year = row['Year']
+            subset = combined_dataset[(combined_dataset['Observation'] == observation) &
+                                    (combined_dataset['Year'] == year)].copy()
+            
+            # Analyse pour chaque chiffre (0-4)
+            for digit in range(5):
+                # Calculer les statistiques pour le dataset original
+                ds_subset = subset[subset['Source'] == 'Dataset']
+                ds_series_counts = []
+                ds_series_means = []
+                ds_series_stds = []
+                
+                for seq in ds_subset['Sequence']:
+                    count, mean, std = count_series(seq, digit)
+                    ds_series_counts.append(count)
+                    if mean is not None:  # N'ajouter la moyenne que si elle existe
+                        ds_series_means.append(mean)
+                        ds_series_stds.append(std)
+                
+                # Calculer les statistiques pour le dataset généré
+                gen_subset = subset[subset['Source'] == 'Generated Dataset']
+                gen_series_counts = []
+                gen_series_means = []
+                gen_series_stds = []
+                
+                for seq in gen_subset['Sequence']:
+                    count, mean, std = count_series(seq, digit)
+                    gen_series_counts.append(count)
+                    if mean is not None:  # N'ajouter la moyenne que si elle existe
+                        gen_series_means.append(mean)
+                        gen_series_stds.append(std)
+                
+                # Calculer les erreurs
+                count_error = abs(np.mean(ds_series_counts) - np.mean(gen_series_counts))
+                # Calculer la moyenne et l'écart-type seulement si des séries existent dans les deux datasets
+                mean_error = abs(np.mean(ds_series_means) - np.mean(gen_series_means)) if ds_series_means and gen_series_means else 0
+                std_error = abs(np.mean(ds_series_stds) - np.mean(gen_series_stds)) if ds_series_stds and gen_series_stds else 0
+                
+                # Mettre à jour les statistiques
+                key = (observation, year)
+                if key not in self.stats:
+                    self.stats[key] = {}
+                
+                self.stats[key][f"digit_{digit}_series_count_error"] = count_error
+                self.stats[key][f"digit_{digit}_series_mean_error"] = mean_error
+                self.stats[key][f"digit_{digit}_series_std_error"] = std_error
+                
+                # Créer un graphique pour visualiser les résultats
+                fig = go.Figure()
+                
+                # Ajouter les barres pour le nombre de séries
+                fig.add_trace(go.Bar(
+                    name='Dataset',
+                    x=['Nombre de séries', 'Taille moyenne', 'Écart-type'],
+                    y=[np.mean(ds_series_counts), np.mean(ds_series_means) if ds_series_means else 0, np.mean(ds_series_stds) if ds_series_stds else 0],
+                    error_y=dict(
+                        type='data',
+                        array=[np.std(ds_series_counts), np.std(ds_series_means) if ds_series_means else 0, np.std(ds_series_stds) if ds_series_stds else 0],
+                        visible=True
+                    ),
+                    marker_color='green'
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Généré',
+                    x=['Nombre de séries', 'Taille moyenne', 'Écart-type'],
+                    y=[np.mean(gen_series_counts), np.mean(gen_series_means) if gen_series_means else 0, np.mean(gen_series_stds) if gen_series_stds else 0],
+                    error_y=dict(
+                        type='data',
+                        array=[np.std(gen_series_counts), np.std(gen_series_means) if gen_series_means else 0, np.std(gen_series_stds) if gen_series_stds else 0],
+                        visible=True
+                    ),
+                    marker_color='blue'
+                ))
+                
+                fig.update_layout(
+                    title=f"Statistiques des séries du chiffre {digit} pour {observation} en {year}",
+                    barmode='group',
+                    height=600,
+                    width=800
+                )
+                
+                if self.show:
+                    fig.show()
+                
+                self.save_figure(fig, f"series_analysis_digit_{digit}", observation, year)
+
     def validation_pipeline(self,generated_dataset_path,stats_dataset_path,windows = True,show = False):
         self.show = show
+        self.load_stats(self.validation_folder_path / stats_dataset_path)
         self.load_data("out/markov_python_generated_dataset10000.csv")
         print("[INFO] Validation markov model au file: ", self.validation_folder_path / generated_dataset_path)
         self.markov_model_validation(self.validation_folder_path / generated_dataset_path)
@@ -997,6 +1188,8 @@ class Validator:
         self.sequence_length_distribution_validation(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation sequence digit stats")
         self.sequence_digit_stats(self.validation_folder_path / generated_dataset_path)
+        print("[INFO] Validation series analysis")
+        self.sequence_series_analysis(self.validation_folder_path / generated_dataset_path)
   
         self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences")
@@ -1016,42 +1209,36 @@ if __name__ == "__main__":
     validator = Validator(show=True)
     
     # Liste des dossiers d'expériences à valider
-    experiment_paths = [
-        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250325-162025",
-        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250325-210435",
-        "experiments/DO_NBL-15_DM-32_DFF-1024_TS-20250326-014926",
-        "experiments/DO_NBL-27_DM-32_DFF-128_TS-20250326-034408",
-        "experiments/DO_NBL-27_DM-32_DFF-128_TS-20250326-083824"
-    ]
+    experiment_paths = [ path for path in Path("experiments").glob("*") if path.is_dir()] 
     
     # Conversion en objets Path
     experiment_paths = [Path(path) for path in experiment_paths]
     
     
     # Exécution des validations pour chaque expérience
-    # for exp_path in experiment_paths:
-    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
-    #     validator.validation_folder_path = exp_path
-    #     # Chemins des fichiers
-    #     generated_dataset_path =  "generated_dataset.csv"
-    #     stats_dataset_path = "generated_dataset_validation_stats.json"
+    for exp_path in experiment_paths:
+        print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+        validator.validation_folder_path = exp_path
+        # Chemins des fichiers
+        generated_dataset_path =  "generated_dataset.csv"
+        stats_dataset_path = "generated_dataset_validation_stats.json"
         
-    #     # Exécution de la validation pipeline
-    #     # validator.validation_pipeline(
-    #     #     generated_dataset_path=generated_dataset_path,
-    #     #     stats_dataset_path=stats_dataset_path,
-    #     #     windows=True,
-    #     #     show=True
-    #     # )
+        # Exécution de la validation pipeline
+        # validator.validation_pipeline(
+        #     generated_dataset_path=generated_dataset_path,
+        #     stats_dataset_path=stats_dataset_path,
+        #     windows=True,
+        #     show=False
+        # )
         
-    #     # Exécution des validations supplémentaires
-    #     print("[INFO] Validation RMSE et log probability sequence metric")
-    #     validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
-    #         generated_dataset_path=generated_dataset_path,
-    #         stats_file_path=stats_dataset_path,
-    #         validation_folder_path=exp_path,
-    #         windows=False
-    #     )
+        # Exécution des validations supplémentaires
+        # print("[INFO] Validation RMSE et log probability sequence metric")
+        # validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
+        #     generated_dataset_path=generated_dataset_path,
+        #     stats_file_path=stats_dataset_path,
+        #     validation_folder_path=exp_path,
+        #     windows=False
+        # )
         
     #     print("[INFO] Validation log prob distribution of sequences")
     #     validator.log_prob_distribution_of_sequences(
