@@ -230,10 +230,6 @@ def train_decoder_only(config_dict, trial=None):
 
         print(f"Nombre de paramètres : {num_params:,}")
         print(f"Le modèle occupe environ {size_mb:.2f} Mo en mémoire.")
-
-        # Calculate class weights
-        class_weights = calculate_class_weights(static_dataset, vocab_size)
-        class_weights = class_weights.to(device)
         criterion_unweighted = torch.nn.CrossEntropyLoss(ignore_index=padding_idx)
 
         # Setup GradScaler si auto_precision est activé
