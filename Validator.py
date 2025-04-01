@@ -625,6 +625,8 @@ class Validator:
                 x=x, y=kde_generated_values, mode='lines',
                 name='KDE File 2', line=dict(color='blue', width=2)
             ))
+                name='KDE File 2', line=dict(color='blue', width=2)
+            ))
 
             # Pour la mesure de similarité, on normalise les KDE en distributions de probabilité
             dx = (max_log_prob - min_log_prob) / (len(x) - 1)
@@ -717,7 +719,7 @@ class Validator:
             digit_mean_vals.extend(d["digit_mean_errors"].values())
             digit_std_vals.extend(d["digit_std_errors"].values())
             if "rmse_error" in d:
-                rmse_errors.append(d["rmse_error"])
+                rmse_errors.append((key, d["rmse_error"]))
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
             
@@ -826,6 +828,7 @@ class Validator:
         print(filepaths)
         # Calculer les métriques pour chaque fichier
         metrics_by_file = {}
+        all_rmse_errors = {}  # Pour stocker les RMSE par couple pour chaque fichier
 
         i=0 
         for filepath in filepaths:
@@ -850,19 +853,38 @@ class Validator:
             
             metrics_by_file[graph_name] = self.compute_metrics(data)
                     
-
-        i+=1
+            except Exception as e:
+                print(f"Erreur lors de la lecture du fichier {filepath}: {str(e)}")
+                continue
+            i+=1
 
         if not metrics_by_file:
             raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
+            
+        # Calculer la moyenne des RMSE uniquement sur les couples communs
+        if all_rmse_errors:
+            # Trouver les couples qui sont présents dans tous les fichiers
+            common_couples = [key for key, values in all_rmse_errors.items() 
+                            if len(values) == len(metrics_by_file)]
+            print(f"[INFO] Couples communs pour le calcul de la moyenne des RMSE : {common_couples}")
+            print(f"[INFO] Nombre de fichiers : {len(metrics_by_file)}")
+            print(f"[INFO] Nombre de couples communs : {len(common_couples)}")
+            
+            # Calculer la moyenne pour chaque fichier uniquement sur les couples communs
+            for graph_name in metrics_by_file:
+                if common_couples:
+                    common_rmse_values = [all_rmse_errors[couple][graph_name] 
+                                        for couple in common_couples 
+                                        if graph_name in all_rmse_errors[couple]]
+                    metrics_by_file[graph_name]["rmse_error"] = (
+                        np.mean(common_rmse_values),
+                        np.std(common_rmse_values)
+                    )
+                else:
+                    metrics_by_file[graph_name]["rmse_error"] = (None, None)
 
-        # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
-        has_full_rmse = True
-        
-        # Liste des métriques de base
-        base_metric_list = ["num_params", "mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss", "series_count_error", "series_mean_error", "series_std_error"]
-        base_title_list = [
-            "Nombre de paramètres<br>du réseau",
+        metric_list = ["mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss"]
+        title_list = [
             "Moyenne des erreurs<br>de moyenne de longueurs",
             "Moyenne des erreurs<br>de std de longueurs",
             "Pourcentage de terminal<br>fate mal prédit",
@@ -1195,6 +1217,8 @@ class Validator:
         print("[INFO] Validation log prob distribution of sequences")
         self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
         self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
+        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
+        self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
         # self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
         # self.plot_stats()
 
@@ -1216,20 +1240,20 @@ if __name__ == "__main__":
     
     
     # Exécution des validations pour chaque expérience
-    for exp_path in experiment_paths:
-        print(f"\n[INFO] Validation de l'expérience: {exp_path}")
-        validator.validation_folder_path = exp_path
-        # Chemins des fichiers
-        generated_dataset_path =  "generated_dataset.csv"
-        stats_dataset_path = "generated_dataset_validation_stats.json"
+    # for exp_path in experiment_paths:
+    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+    #     validator.validation_folder_path = exp_path
+    #     # Chemins des fichiers
+    #     generated_dataset_path =  "generated_dataset.csv"
+    #     stats_dataset_path = "generated_dataset_validation_stats.json"
         
-        # Exécution de la validation pipeline
-        # validator.validation_pipeline(
-        #     generated_dataset_path=generated_dataset_path,
-        #     stats_dataset_path=stats_dataset_path,
-        #     windows=True,
-        #     show=False
-        # )
+    #     # Exécution de la validation pipeline
+    #     # validator.validation_pipeline(
+    #     #     generated_dataset_path=generated_dataset_path,
+    #     #     stats_dataset_path=stats_dataset_path,
+    #     #     windows=True,
+    #     #     show=True
+    #     # )
         
         # Exécution des validations supplémentaires
         # print("[INFO] Validation RMSE et log probability sequence metric")

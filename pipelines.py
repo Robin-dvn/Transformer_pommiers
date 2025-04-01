@@ -377,6 +377,26 @@ def train_decoder_only(config_dict, trial=None):
             torch.cuda.empty_cache()
         return None
 
+def find_wandb_run_path(run_id):
+    """
+    Trouve le chemin du dossier wandb contenant l'ID de la run spécifié.
+    
+    Args:
+        run_id: L'ID de la run wandb
+        
+    Returns:
+        str: Le chemin complet du dossier de la run
+    """
+    wandb_dir = Path("wandb")
+    if not wandb_dir.exists():
+        raise FileNotFoundError("Le dossier wandb n'existe pas")
+        
+    for run_dir in wandb_dir.iterdir():
+        if run_dir.is_dir() and str(run_id) in run_dir.name:
+            return str(run_dir)
+            
+    raise FileNotFoundError(f"Aucun dossier trouvé contenant l'ID {run_id}")
+
 def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     """
     Pipeline pour entraîner, générer et valider un modèle en utilisant une configuration passée en dictionnaire.
@@ -452,17 +472,18 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     if sync_wandb:
         # On termine d'abord la run en mode offline
         wandb_run.finish(quiet=True)
-        # Puis on synchronise en ligne
+        # Puis on synchronise en ligne en utilisant l'ID unique de la run
         print("[INFO] Synchronisation des données wandb en ligne...")
         try:
+            run_path = find_wandb_run_path(wandb_run.id)
             subprocess.run(
-                ["wandb", "sync", str("wandb/latest-run")],
+                ["wandb", "sync", run_path],
                 check=True,
                 capture_output=True,
                 text=True
             )
-        except subprocess.CalledProcessError as e:
-            print(f"[WARNING] Erreur lors de la synchronisation wandb: {e.stderr}")
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"[WARNING] Erreur lors de la synchronisation wandb: {e}")
     else:
         wandb_run.finish(quiet=True)
 
