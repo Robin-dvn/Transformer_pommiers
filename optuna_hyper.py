@@ -8,7 +8,6 @@ import subprocess
 from pipelines import train_generate_validate_pipeline
 
 
-
 def objective(trial):
     '''
     Objective function for Optuna to optimize the hyperparameters
@@ -21,7 +20,7 @@ def objective(trial):
         'val_split': 0.8,
         'vocab_size': 17,
         'padding_idx': 0,
-        'nb_epoch': 100,
+        'nb_epoch': 500,
         'lr': 5e-5,
         'dynamic': True,
         'scheduler': {
@@ -38,20 +37,19 @@ def objective(trial):
     }
 
     # Hyperparamètres à optimiser
-    base_config['d_model'] = trial.suggest_categorical("d_model", [32, 64, 128, 256, 512])
-    base_config['n_head'] = trial.suggest_categorical("n_head", [1, 2, 4, 8])
-    base_config['nb_layers'] = trial.suggest_int("nb_layers", 1, 20)
-    base_config['dim_feedforward'] = 2048  # Valeur fixe
-  
+    base_config['d_model'] = trial.suggest_categorical("d_model", [32, 64, 128, 256])
+    base_config['n_head'] = trial.suggest_categorical("n_head", [1, 2, 4, 8, 16])
+    base_config['nb_layers'] = trial.suggest_int("nb_layers", 1, 27)
+    base_config['dim_feedforward'] = trial.suggest_categorical("dim_feedforward", [64,128,256,512,1024])
 
     # Exécution de la pipeline avec le trial
-    validator = train_generate_validate_pipeline(base_config, trial)
+    final_val = train_generate_validate_pipeline(base_config, trial, sync_wandb=True)
     
-    if validator is None:
+    if final_val is None:
         return float('inf')  # Retourne une valeur infinie si la génération échoue
-    
-    # La perte de validation est maintenant gérée dans la pipeline
-    return validator.validation_loss
+
+    # Calcul de la somme normalisée des métriques
+    return final_val
 
 if __name__ == "__main__":
     # Création de l'étude Optuna avec pruning
@@ -66,8 +64,6 @@ if __name__ == "__main__":
     study = optuna.create_study(
         direction="minimize",
         study_name="transformer_optimization",
-        storage="sqlite:///optuna_study.db",
-        load_if_exists=True,
         pruner=pruner
     )
     

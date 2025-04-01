@@ -1,3 +1,7 @@
 class ValidationError(Exception):
-    """Exception raised for errors in the validation process."""
+    """Exception levée lors d'une erreur de validation."""
+    pass
+
+class GPUOutOfMemoryError(Exception):
+    """Exception levée lors d'une erreur de mémoire GPU."""
     pass
