@@ -28,7 +28,7 @@ from PommierDataset import (
     DecoderOnlyDynamicPommierDataset
 )
 from transformer import TransformerDecoderOnly
-from validator import Validator
+from Validator import Validator
 from ValidationError import ValidationError, GPUOutOfMemoryError
 
 def model_size_mb(model):
