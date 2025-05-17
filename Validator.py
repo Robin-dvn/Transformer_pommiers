@@ -842,17 +842,18 @@ class Validator:
                 if os.path.exists(config_path):
                     with open(config_path, 'r') as f:
                         config = json.load(f)
-                        graph_name = config.get('graph_name', Path(filepath).name)
+                        graph_name = config.get('graph_name', Path(filepath).name + f"_{i}")
                 else:
                     graph_name = Path(filepath).name + f"_{i}"
             else:
                 graph_name = Path(filepath).name + f"_{i}"
             
             metrics_by_file[graph_name] = self.compute_metrics(data)
-                    
+        
+            # print(graph_name)   
 
-        i+=1
-
+            i+=1
+        # print(len(metrics_by_file))    
         if not metrics_by_file:
             raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
 
@@ -1213,15 +1214,15 @@ if __name__ == "__main__":
     
     # Conversion en objets Path
     experiment_paths = [Path(path) for path in experiment_paths]
-    
+     
     
     # Exécution des validations pour chaque expérience
-    for exp_path in experiment_paths:
-        print(f"\n[INFO] Validation de l'expérience: {exp_path}")
-        validator.validation_folder_path = exp_path
-        # Chemins des fichiers
-        generated_dataset_path =  "generated_dataset.csv"
-        stats_dataset_path = "generated_dataset_validation_stats.json"
+    # for exp_path in experiment_paths:
+    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+    #     validator.validation_folder_path = exp_path
+    #     # Chemins des fichiers
+    #     generated_dataset_path =  "generated_dataset.csv"
+    #     stats_dataset_path = "generated_dataset_validation_stats.json"
         
         # Exécution de la validation pipeline
         # validator.validation_pipeline(
