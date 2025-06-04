@@ -1,19 +1,45 @@
 
-from PommierDataset import PommierDataset,collate_fn
-from Validator import ValidationError, GPUOutOfMemoryError
+
+"""
+Transformer Model Implementation for Decoder-Only Architecture.
+
+This module provides the implementation of a Transformer model tailored for decoder-only tasks.
+It includes positional encoding, a custom decoder layer, and the main Transformer model class.
+The module also supports sequence generation with temperature scaling and token masking.
+
+Classes:
+    - PositionalEncoding: Adds positional information to token embeddings.
+    - DecoderOnlyTransformerLayer: Custom Transformer decoder layer without cross-attention.
+    - TransformerDecoderOnly: Main decoder-only Transformer model.
+
+Functions:
+    - generate_batch: Generates sequences using the model.
+
+Exceptions:
+    - ValidationError: Raised during sequence generation for invalid tokens.
+    - GPUOutOfMemoryError: Raised when GPU memory is insufficient.
+
+"""
+
+import math
+
 from torch.utils.data import DataLoader
 from torch import Tensor
 from tqdm import tqdm
-
-import math
+from Validator import ValidationError, GPUOutOfMemoryError
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-
-
 class PositionalEncoding(nn.Module):
+    """
+    Adds positional encoding to token embeddings.
+
+    Args:
+        d_model (int): Dimension of the model.
+        dropout (float): Dropout rate for positional encoding.
+        max_len (int): Maximum sequence length for positional encoding.
+    """
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -28,13 +54,39 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
+        """
+        Applies positional encoding to the input tensor.
+
+        Args:
+            x (Tensor): Input tensor of shape (seq_len, batch_size, d_model).
+
+        Returns:
+            Tensor: Tensor with positional encoding applied.
+        """
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
 
 class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
+    """
+    Custom Transformer decoder layer for decoder-only architecture.
+
+    This layer removes cross-attention and retains only causal self-attention
+    and feed-forward network (FFN).
+
+    Args:
+        d_model (int): Dimension of the model.
+        nhead (int): Number of attention heads.
+        dim_feedforward (int): Dimension of the feed-forward network.
+        dropout (float): Dropout rate.
+        activation (callable): Activation function for FFN.
+        layer_norm_eps (float): Epsilon value for layer normalization.
+        batch_first (bool): Whether batch dimension comes first.
+        norm_first (bool): Whether to apply normalization before other operations.
+        bias (bool): Whether to include bias in linear layers.
+        device (torch.device, optional): Device for the layer.
+        dtype (torch.dtype, optional): Data type for the layer.
+    """
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  activation=F.relu, layer_norm_eps=1e-5, batch_first=False,
                  norm_first=False, bias=True, device=None, dtype=None):
@@ -45,9 +97,22 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
                 tgt_key_padding_mask=None, memory_key_padding_mask=None,
                 tgt_is_causal=False, memory_is_causal=False):
         """
-        Version Decoder-Only :
-        - Supprime le Cross-Attention avec `memory`
-        - Garde uniquement le Self-Attention causale et le Feed-Forward Network (FFN)
+        Forward pass for the decoder-only layer.
+
+        Args:
+            tgt (Tensor): Target sequence tensor.
+            memory (Tensor, optional): Memory tensor (not used in decoder-only).
+            tgt_mask (Tensor, optional): Mask for target sequence.
+            memory_mask (Tensor, optional): Mask for memory (not used in decoder-only).
+            tgt_key_padding_mask (Tensor, optional): Padding mask for target sequence.
+            memory_key_padding_mask (Tensor, optional): Padding mask for memory (not used in decoder-only).
+            tgt_is_causal (bool, optional): Whether target attention is causal.
+            memory_is_causal (bool, optional): Whether memory attention is causal (not used in decoder-only).
+
+        Returns:
+            Tensor: Output tensor after applying self-attention and FFN.
+
+
         """
 
         x = tgt
@@ -64,15 +129,21 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
 
 
 
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from tqdm import tqdm
-
-
-
 class TransformerDecoderOnly(nn.Module):
+    """
+    Decoder-only Transformer model.
+
+    This model includes token embedding, positional encoding, a stack of decoder layers,
+    and a final linear layer for output logits.
+
+    Args:
+        vocab_size (int): Size of the vocabulary.
+        d_model (int): Dimension of the model.
+        n_head (int): Number of attention heads.
+        num_decoder_layers (int): Number of decoder layers.
+        padding_idx (int): Index for padding token.
+        dim_feedforward (int): Dimension of the feed-forward network.
+    """
     def __init__(self, vocab_size, d_model, n_head, num_decoder_layers, padding_idx,dim_feedforward=1024):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
@@ -82,7 +153,18 @@ class TransformerDecoderOnly(nn.Module):
         self.fc_out = nn.Linear(d_model, vocab_size)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None,generating= False):
+    def forward(self, tgt: torch.Tensor, tgt_key_padding_mask: torch.Tensor = None, generating=False):
+        """
+        Forward pass for the decoder-only Transformer model.
+
+        Args:
+            tgt (Tensor): Target sequence tensor.
+            tgt_key_padding_mask (Tensor, optional): Padding mask for target sequence.
+            generating (bool, optional): Whether the model is in generation mode.
+
+        Returns:
+            Tensor: Output logits of shape (batch_size, seq_len, vocab_size).
+        """
         t_emb = self.embed(tgt)
         t_p_emb = self.posEmbed(t_emb)
         # print(t_p_emb)
@@ -104,6 +186,21 @@ class TransformerDecoderOnly(nn.Module):
         return out
 
     def generate_batch(self, input_tokens, sos_idx, device, end_toks_list, max_length=100, temperature=1, batch_size=None):
+        """
+        Generates sequences using the decoder-only Transformer model.
+
+        Args:
+            input_tokens (Tensor): Initial input tokens of shape (batch_size, seq_len).
+            sos_idx (int): Index of the start-of-sequence token.
+            device (torch.device): Device to run the generation on.
+            end_toks_list (list): List of end token indices.
+            max_length (int, optional): Maximum length of generated sequences. Defaults to 100.
+            temperature (float, optional): Temperature for sampling. Defaults to 1.
+            batch_size (int, optional): Batch size for generation. Defaults to None.
+
+        Returns:
+            Tensor: Generated sequences of shape (batch_size, generated_seq_len).
+        """
         self.eval()
         if batch_size is None:
             batch_size = input_tokens.size(0)
@@ -156,44 +253,3 @@ class TransformerDecoderOnly(nn.Module):
             # raise ValidationError("Max_length atteint, ajout d'un token 7.")
 
         return sequence
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    dataset = PommierDataset("out/datasetcustom10000.csv")
-    dataloader = DataLoader(dataset,3,False,collate_fn=collate_fn)
-
-    batch = next(iter(dataloader))
-
-
-
-    pad_token_id = 0
-    enc_inputs, dec_inputs, dec_targets = batch
-    padding_mask = (dec_inputs == pad_token_id)
-
-    model = Transformer(16,11,4,2,0)
-    out = model(enc_inputs,dec_inputs,padding_mask)
-
-    pad_token_id = 0
-
-    # Transformer logits et targets
-    print(out.shape)
-    logits = out.view(-1, out.size(-1))  # (batch_size * seq_len, vocab_size)
-    print(logits.shape)
-    print(dec_targets.shape)
-    targets = dec_targets.view(-1)  # (batch_size * seq_len,)
-    print(targets.shape)
-
-    # Calculer la perte en ignorant le padding
-    loss = F.cross_entropy(logits, targets, ignore_index=pad_token_id)
-    print("Loss:\n",loss)
-    print("Encoder Inputs:\n", enc_inputs)
-    print("Decoder Inputs:\n", dec_inputs)
-    print("Decoder Targets:\n", dec_targets)
-    print("outdu transformer:\n",out)
-    print("targets:\n",targets)
-    print("Logits:\n",logits)

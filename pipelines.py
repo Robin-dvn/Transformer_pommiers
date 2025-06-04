@@ -1,6 +1,6 @@
 """
-Module de pipelines pour l'entraînement, la génération et la validation de modèles Transformer.
-Ce module contient les fonctions principales pour gérer le workflow complet d'apprentissage.
+Pipeline module for training, generating, and validating Transformer models.
+This module contains the main functions to manage the complete learning workflow.
 """
 
 # Standard library imports
@@ -33,13 +33,13 @@ from Validator import Validator, GPUOutOfMemoryError,ValidationError
 
 def model_size_mb(model):
     """
-    Calcule la taille du modèle en mégaoctets.
+    Calculates the size of the model in megabytes.
 
     Args:
-        model: Le modèle PyTorch dont on veut calculer la taille
+        model: The PyTorch model whose size is to be calculated.
 
     Returns:
-        float: Taille du modèle en mégaoctets
+        float: Size of the model in megabytes.
     """
     total_size = sum(p.numel() * p.element_size() for p in model.parameters() if p.requires_grad)
     return total_size / (1024 ** 2)
@@ -48,15 +48,15 @@ def model_size_mb(model):
 
 def create_config_file(file_path, config_dict):
     """
-    Crée un fichier de configuration JSON à partir d'un dictionnaire.
+    Creates a JSON configuration file from a dictionary.
 
     Args:
-        file_path (str ou Path): Chemin vers le fichier où la configuration sera sauvegardée
-        config_dict (dict): Dictionnaire contenant les paramètres de configuration
+        file_path (str or Path): Path to the file where the configuration will be saved.
+        config_dict (dict): Dictionary containing the configuration parameters.
 
     Raises:
-        IOError: Si le fichier ne peut pas être créé ou écrit
-        TypeError: Si config_dict n'est pas un dictionnaire
+        IOError: If the file cannot be created or written.
+        TypeError: If config_dict is not a dictionary.
     """
     if not isinstance(config_dict, dict):
         raise TypeError("config_dict doit être un dictionnaire")
@@ -75,14 +75,14 @@ def create_config_file(file_path, config_dict):
 
 def train_decoder_only(config_dict, trial=None):
     """
-    Entraîne un modèle transformer en mode decoder-only selon la configuration passée.
+    Trains a transformer model in decoder-only mode based on the given configuration.
 
     Args:
-        config_dict (dict): Dictionnaire contenant les paramètres de configuration
-        trial (optuna.Trial, optional): Trial Optuna pour l'optimisation des hyperparamètres
+        config_dict (dict): Dictionary containing the configuration parameters.
+        trial (optuna.Trial, optional): Optuna trial for hyperparameter optimization.
 
     Returns:
-        tuple: (modèle entraîné, chemin vers le dossier de l'expérience, perte de validation finale, run wandb)
+        tuple: (trained model, path to the experiment folder, final validation loss, wandb run)
     """
     try:
         # Extract parameters from config_dict
@@ -211,7 +211,7 @@ def train_decoder_only(config_dict, trial=None):
             "dim_feedforward": dim_feedforward,
             "scheduler": scheduler_config['name'],
             "scheduler_params": (
-                scheduler_config['params'] if scheduler_config['name'] != "None" 
+                scheduler_config['params'] if scheduler_config['name'] != "None"
                 else None
             ),
             "early_stopping": early_stopping_config['name'],
@@ -243,8 +243,8 @@ def train_decoder_only(config_dict, trial=None):
             model.train()
             total_train_loss_unweighted = 0
             for input_seq, target_seq, _ in tqdm(
-                train_loader, 
-                desc=f"Epoch {epoch} - Train", 
+                train_loader,
+                desc=f"Epoch {epoch} - Train",
                 colour="red"
             ):
                 try:
@@ -299,8 +299,8 @@ def train_decoder_only(config_dict, trial=None):
             total_eval_loss_unweighted = 0
             with torch.no_grad():
                 for input_seq, target_seq, loss_mask in tqdm(
-                    val_loader, 
-                    desc=f"Epoch {epoch} - Val", 
+                    val_loader,
+                    desc=f"Epoch {epoch} - Val",
                     colour="yellow"
                 ):
                     try:
@@ -332,7 +332,7 @@ def train_decoder_only(config_dict, trial=None):
                 trial.report(avg_val_loss_unweighted, step=epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
-                
+
                 # Mise à jour de la meilleure perte de validation
                 best_val_loss = min(best_val_loss, avg_val_loss_unweighted)
 
@@ -379,35 +379,35 @@ def train_decoder_only(config_dict, trial=None):
 
 def find_wandb_run_path(run_id):
     """
-    Trouve le chemin du dossier wandb contenant l'ID de la run spécifié.
-    
+    Finds the path of the wandb folder containing the specified run ID.
+
     Args:
-        run_id: L'ID de la run wandb
-        
+        run_id: The ID of the wandb run.
+
     Returns:
-        str: Le chemin complet du dossier de la run
+        str: The full path of the run folder.
     """
     wandb_dir = Path("wandb")
     if not wandb_dir.exists():
         raise FileNotFoundError("Le dossier wandb n'existe pas")
-        
+
     for run_dir in wandb_dir.iterdir():
         if run_dir.is_dir() and str(run_id) in run_dir.name:
             return str(run_dir)
-            
+
     raise FileNotFoundError(f"Aucun dossier trouvé contenant l'ID {run_id}")
 
 def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     """
-    Pipeline pour entraîner, générer et valider un modèle en utilisant une configuration passée en dictionnaire.
-    
+    Pipeline to train, generate, and validate a model using a configuration provided as a dictionary.
+
     Args:
-        config_dict (dict): Dictionnaire contenant les paramètres de configuration.
-        trial (optuna.Trial, optional): Trial Optuna pour l'optimisation des hyperparamètres.
-        sync_wandb (bool, optional): Si True, synchronise les données avec wandb en ligne à la fin de la run.
-    
+        config_dict (dict): Dictionary containing the configuration parameters.
+        trial (optuna.Trial, optional): Optuna trial for hyperparameter optimization.
+        sync_wandb (bool, optional): If True, synchronizes data with wandb online at the end of the run.
+
     Returns:
-        Validator : Instance de la classe Validator utilisée pour générer et valider les données.
+        Validator: Instance of the Validator class used to generate and validate data.
     """
     # Train the model
     st = time()
@@ -443,14 +443,14 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     # Lecture des statistiques de validation
     with open(experiment_path / "generated_dataset_validation_stats.json", "r", encoding='utf-8') as f:
         stats = json.load(f)
-    
+
     # Calcul du nombre de paramètres du modèle
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
+
     # Stockage de la perte de validation et du nombre de paramètres dans le validator pour retour
     stats["final_val"] = final_val_loss
     stats["num_params"] = num_params
-    
+
     with open(experiment_path / "generated_dataset_validation_stats.json", "w", encoding='utf-8') as f:
         json.dump(stats, f)
     # Calcul des métriques globales
@@ -461,7 +461,7 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
         # Enregistrement de la perte de validation finale (moyenne sur les 20 dernières époques)
         trial.set_user_attr('final_val', final_val_loss)
         trial.set_user_attr('num_params', num_params)
-        
+
         # Enregistrement des métriques de validation
         for metric_name, (mean, std) in metrics.items():
             if mean is not None:  # On n'enregistre que les métriques qui ont des valeurs

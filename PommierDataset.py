@@ -1,25 +1,33 @@
-from torch.nn.utils.rnn import pad_sequence
+"""
+Dataset module for training and validating Transformer models.
 
-import torch
-from torch.utils.data import Dataset,DataLoader
-import pandas as pd
+This module provides two datasets:
+1. `PommierDatasetDecoderOnly`: A static dataset for decoder-only models.
+2. `DecoderOnlyDynamicPommierDataset`: A dynamic dataset that generates data on-the-fly.
+
+It also includes utility functions for data collation.
+"""
+
 import itertools
+import json
+import numpy as np
+import pandas as pd
+import torch
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset, DataLoader, random_split
 from utils.HSMM import HSMM
 from vmapplet_utils.enums import Observation
-import numpy as np
 from vmapplet_utils.sequences import terminal_fate, _generate_random_draw_sequence
-from torch.utils.data import random_split
-
 
 
 class PommierDatasetDecoderOnly(Dataset):
     def __init__(self, dataset_path, token_to_id=None):
         """
-        Dataset PyTorch pour un modèle Décodeur-only.
+        PyTorch Dataset for a Decoder-only model.
 
         Args:
-            dataset_path (str): Chemin du fichier CSV contenant les séquences brutes.
-            token_to_id (dict, optional): Mapping token -> ID. S'il est None, il sera construit.
+            dataset_path (str): Path to the CSV file containing raw sequences.
+            token_to_id (dict, optional): Mapping token -> ID. If None, it will be constructed.
         """
         self.dataset = pd.read_csv(dataset_path)
         self.vocab = {
@@ -42,7 +50,7 @@ class PommierDatasetDecoderOnly(Dataset):
         )
 
     def tokenize_row(self, row):
-        """Tokenise une ligne du dataset."""
+        """Tokenizes a row from the dataset."""
         tokens = []
         for item in row:
             item = str(item).strip()
@@ -53,9 +61,9 @@ class PommierDatasetDecoderOnly(Dataset):
         return tokens
 
     def build_vocab(self, token_lists):
-        """Construit le mapping token -> ID en incluant les tokens spéciaux."""
+        """Builds the token -> ID mapping, including special tokens."""
         unique_tokens = sorted(set(itertools.chain.from_iterable(token_lists)))
-        # Ajout des tokens spéciaux
+        # Add special tokens
         vocab = {"<PAD>": 0, "<SOS>": 1}
         vocab.update({token: idx + len(vocab) for idx, token in enumerate(unique_tokens)})
         return vocab
@@ -65,12 +73,12 @@ class PommierDatasetDecoderOnly(Dataset):
 
     def __getitem__(self, idx):
         """
-        Pour chaque exemple, on construit :
+        For each example, constructs:
           - full_seq = [token1, token2, <SOS>, token3, token4, ...]
           - input_seq  = full_seq[:-1]
           - target_seq = full_seq[1:]
-        La perte sera calculée uniquement à partir du token situé après <SOS>.
-        Ici, on ignore les positions 0, 1 et 2.
+        The loss will be calculated only from the token located after <SOS>.
+        Here, positions 0, 1, and 2 are ignored.
         """
         token_ids = self.dataset.iloc[idx]["token_ids"]
         full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
@@ -97,13 +105,13 @@ def collate_fn_decoder_only(batch):
 
 class DecoderOnlyDynamicPommierDataset(Dataset):
     """
-    Dataset dynamique pour un modèle Décodeur-only, qui génère des données à la volée.
+    Dynamic dataset for a Decoder-only model, generating data on-the-fly.
 
     Args:
-        token_to_id (dict): Dictionnaire de mapping token -> ID.
-        num_samples (int): Nombre total d'échantillons à générer.
-        min_length (int): Longueur minimale des séquences générées.
-        max_length (int): Longueur maximale des séquences générées.
+        token_to_id (dict): Dictionary mapping token -> ID.
+        num_samples (int): Total number of samples to generate.
+        min_length (int): Minimum length of generated sequences.
+        max_length (int): Maximum length of generated sequences.
     """
 
     def __init__(self, token_to_id, num_samples, min_length, max_length):
@@ -125,48 +133,48 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
             Observation.MEDIUM,
         ]
 
-        # Initialiser tous les modèles HSMM nécessaires
+        # Initialize all required HSMM models
         self.hsmm_models = {}
         for year, state_dict in self.mappings.items():
             for state, toml_file in state_dict.items():
                 self.hsmm_models[(year, state)] = HSMM(toml_file)
 
     def __len__(self):
-        """Retourne le nombre total d'échantillons."""
+        """Returns the total number of samples."""
         return self.num_samples
 
     def __getitem__(self, idx):
         """
-        Génère un exemple de données à la volée.
+        Generates a data sample on-the-fly.
 
-        Retourne :
+        Returns:
             - full_seq = [token1, token2, <SOS>, token3, token4, ...]
             - input_seq  = full_seq[:-1]
             - target_seq = full_seq[1:]
         """
-        # Sélectionner un état de départ et une année aléatoirement
+        # Randomly select a starting state and year
         starting_state = self.starting_states[np.random.randint(0, len(self.starting_states))]
         year = np.random.randint(1, 6)
 
-        # Générer une séquence
+        # Generate a sequence
         seq = [starting_state.value, f"Y{year}"]
         hsmm_model = self.hsmm_models.get((year, starting_state))
         terminal = terminal_fate(year, starting_state) if starting_state != Observation.FLORAL else Observation.DORMANT
         seq = seq + self.generate_seq(starting_state, year, hsmm_model)
         seq.append(terminal.value)
 
-        # Convertir les observations en tokens
+        # Convert observations to tokens
         tokens = [str(obs) for obs in seq]
 
-        # Convertir les tokens en IDs
+        # Convert tokens to IDs
         token_ids = [self.token_to_id[token] for token in tokens if token in self.token_to_id]
 
-        # Construire la séquence complète
+        # Construct the full sequence
         full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
         input_seq = torch.tensor(full_seq[:-1], dtype=torch.long)
         target_seq = torch.tensor(full_seq[1:], dtype=torch.long)
 
-        # Créer un masque de perte
+        # Create a loss mask
         loss_mask = torch.zeros(len(input_seq), dtype=torch.bool)
         if len(loss_mask) > 3:
             loss_mask[2:] = True
@@ -174,7 +182,7 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
         return input_seq, target_seq, loss_mask
 
     def generate_seq(self, starting_state, year, hsmm=None):
-        """Génère une séquence en fonction de l'état de départ et de l'année."""
+        """Generates a sequence based on the starting state and year."""
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
         elif year == 2 and starting_state == Observation.LARGE:

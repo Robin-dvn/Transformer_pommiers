@@ -1,3 +1,16 @@
+"""
+Training Script for Decoder-Only Transformer Models.
+
+This script allows for both testing and full-scale training of decoder-only Transformer models.
+It supports various configurations, including baseline, cyclical learning rate, and early stopping.
+
+Modules:
+    - pipelines: Contains the training and validation pipeline functions.
+
+Execution:
+    Run this script directly to start training. Use the `test` variable to toggle between test and full modes.
+"""
+
 from pipelines import train_decoder_only, train_generate_validate_pipeline
 
 if __name__ == "__main__":
@@ -18,13 +31,13 @@ if __name__ == "__main__":
             (27, 32, 128),   # NBL-27_DM-32_DFF-128
             (27, 32, 256),   # NBL-27_DM-32_DFF-256
             (8, 32, 2048),   # NBL-8_DM-32_DFF-2048
-            
+
             # Configuration avec d_model = 64
             (15, 64, 1024),  # NBL-15_DM-64_DFF-1024
             (27, 64, 128),   # NBL-27_DM-64_DFF-128
             (27, 64, 256),   # NBL-27_DM-64_DFF-256
             (8, 64, 2048),   # NBL-8_DM-64_DFF-2048
-            
+
             # # Configuration avec d_model = 128
             (15, 128, 1024),  # NBL-15_DM-128_DFF-1024
             # (27, 128, 128),   # NBL-27_DM-128_DFF-128
@@ -91,6 +104,3 @@ if __name__ == "__main__":
         config_early["graph_name"] = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_early"
         print(f"=== {'Test' if test else 'Essai'} early stopping ===")
         validator_early = train_generate_validate_pipeline(config_early,sync_wandb=sync)
-
-
-

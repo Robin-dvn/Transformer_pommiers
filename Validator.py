@@ -1,6 +1,6 @@
 import torch
 import pandas as pd
-from transformer import Transformer,TransformerDecoderOnly
+from transformer import TransformerDecoderOnly
 from tqdm import tqdm
 import plotly.express as px
 from scipy.stats import gaussian_kde
@@ -28,7 +28,7 @@ class GPUOutOfMemoryError(Exception):
     pass
 
 
-class Validator: 
+class Validator:
     """
     Classe Validator pour valider et analyser des séquences générées par un modèle Transformer.
 
@@ -64,7 +64,7 @@ class Validator:
         self.stats = {}
         self.show = show
         self.df = pd.DataFrame(columns=["Observation", "Year", "Sequence", "Terminal Fate"])
-        
+
     def save_figure(self, fig, validation_type, observation, year):
         """
         Sauvegarde une figure dans le dossier de simulation.
@@ -77,12 +77,12 @@ class Validator:
         """
         if self.validation_folder_path is None:
             raise ValueError("Le chemin du dossier de validation doit être initialisé pour sauvegarder des figures")
-            
+
         folder_path = self.validation_folder_path / "assets" / validation_type
         os.makedirs(folder_path, exist_ok=True)
         file_path = folder_path / f"{observation}_{year}_{validation_type}.png"
         fig.write_image(file_path)
-    
+
     def generate_data(self, nb_samples, output_path, end_toks_list):
         """
         Génère des données en utilisant le modèle Transformer.
@@ -94,7 +94,7 @@ class Validator:
         """
         if self.model is None or self.device is None:
             raise ValueError("Le modèle et le device doivent être initialisés pour générer des données")
-        
+
         if self.token_to_id is None:
             raise ValueError("Le dictionnaire token_to_id doit être initialisé pour générer des données")
 
@@ -102,7 +102,7 @@ class Validator:
         decoder_only = True
         for type in tqdm(range(8, 12)):
             for year in range(12, 17):
-                
+
                 if nb_samples > 1000:
                     for i in range(0, nb_samples, 1000):
                         batch_size = min(1000, nb_samples - i )
@@ -122,7 +122,7 @@ class Validator:
                     else:
                       sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 3:]), dim=1).to('cpu').tolist())
 
-      
+
         print(f"[INFO] Generated {len(sequences_generees)} sequences")
         print(f"[INFO] converting to dataset: ")
         data_generated = []
@@ -137,14 +137,14 @@ class Validator:
                     if self.id_to_token[item].isdigit():
                         digits += self.id_to_token[item]
                         continue
- 
+
                     if digits != "":
                         datasetform.append(digits)
                     datasetform.append(self.id_to_token[item])
                     digits = ""
 
                     if item in end_toks_list and len(datasetform) !=1:
-                        break   
+                        break
             data_generated.append(datasetform)
 
         self.df = pd.DataFrame(data_generated, columns=["Observation", "Year", "Sequence", "Terminal Fate"])
@@ -161,10 +161,10 @@ class Validator:
         """
         if data_path is None and self.datapath is None:
             raise ValueError("Aucun chemin de données n'a été fourni")
-        
+
         self.datapath = data_path or self.datapath
         self.df = pd.read_csv(self.datapath)
-        
+
 
 
     def markov_model_validation(self,generated_dataset_path):
@@ -179,7 +179,7 @@ class Validator:
         generated_dataset = pd.read_csv(generated_dataset_path)
 
         # assert len(dataset) == len(generated_dataset), "Datasets have different lengths"
-        
+
         # Ajouter une colonne 'Source' pour indiquer la provenance des données
         dataset['Source'] = 'Dataset'
         generated_dataset['Source'] = 'Generated Dataset'
@@ -199,15 +199,15 @@ class Validator:
 
             # Compter les occurrences de Terminal Fate pour chaque source
             counts = subset.groupby(['Terminal Fate', 'Source']).size().reset_index(name='Count')
-            
+
             # Créer un DataFrame avec toutes les combinaisons possibles de Terminal Fate et Source
             all_combinations = pd.MultiIndex.from_product([counts['Terminal Fate'].unique(), ['Dataset', 'Generated Dataset']], names=['Terminal Fate', 'Source']).to_frame(index=False)
 
             # Fusionner avec le DataFrame counts pour ajouter les combinaisons manquantes
-            counts = all_combinations.merge(counts, on=['Terminal Fate', 'Source'], how='left').fillna(1) 
+            counts = all_combinations.merge(counts, on=['Terminal Fate', 'Source'], how='left').fillna(1)
 
 
-            
+
             # Calculer l'erreur en pourcentage pour chaque Terminal Fate
             terminal_fates = counts['Terminal Fate'].unique()
             percentage_errors = {}
@@ -218,7 +218,7 @@ class Validator:
                 if abs(dataset_count - generated_count) >0:
                     total_bad_fate += abs(dataset_count - generated_count)
             percentage_error =  total_bad_fate/ 10000 * 100
-  
+
 
             # Mettre à jour le dictionnaire stats
             self.stats[(observation, year)] = {
@@ -238,7 +238,7 @@ class Validator:
                 width=1200,
                 margin=dict(t=100, b=100, l=50, r=50)
             )
-            
+
             self.save_figure(fig, "markov_model_validation", observation, year)
 
     def sequence_length_validation(self, generated_dataset_path):
@@ -248,7 +248,7 @@ class Validator:
         Args:
             generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
         """
-        
+
 
         dataset = self.df
         generated_dataset = pd.read_csv(generated_dataset_path)
@@ -271,7 +271,7 @@ class Validator:
             std_error = abs(stats.loc[stats['Source'] == 'Dataset', 'std'].values[0] -
                             stats.loc[stats['Source'] == 'Generated Dataset', 'std'].values[0])
             self.stats[(observation, year)]["mean_error"] = mean_error
-            self.stats[(observation, year)]["std_error"] = std_error 
+            self.stats[(observation, year)]["std_error"] = std_error
 
             y_max = stats['mean'].max() + 10 * stats['std'].max()
             y_min = stats['mean'].min() - 10 * stats['std'].max()
@@ -360,29 +360,29 @@ class Validator:
                 min_length = min(min(dataset_lengths), min(generated_lengths))
                 max_length = max(max(dataset_lengths), max(generated_lengths))
                 x = np.linspace(min_length, max_length, 2000)  # Plus de points pour une meilleure résolution
-                
+
                 kde_dataset = gaussian_kde(dataset_lengths, bw_method=0.5)
                 kde_generated = gaussian_kde(generated_lengths, bw_method=0.5)
-                
+
                 # Calcul des valeurs KDE
                 P = kde_dataset(x)
                 Q = kde_generated(x)
-                
+
                 # Normalisation pour la distance de Jensen-Shannon
                 dx = (max_length - min_length) / (len(x) - 1)
                 P_norm = P / np.sum(P * dx)
                 Q_norm = Q / np.sum(Q * dx)
-                
+
                 # Calcul de la distance de Jensen-Shannon
                 js_distance = jensenshannon(P_norm, Q_norm)
                 self.stats[(observation, year)]["sequence_length_js_distance"] = js_distance
 
                 # Création de l'histogramme avec Plotly
                 fig = go.Figure()
-                
+
                 # Nombre de bins égal à la longueur maximale des séquences
                 nbins = int(max_length - min_length + 1)
-                
+
                 # Ajout des histogrammes avec nombre de bins adapté et normalisation en densité
                 fig.add_trace(go.Histogram(
                     x=dataset_lengths,
@@ -486,7 +486,7 @@ class Validator:
 
             # Mise à jour de self.stats
             key = (observation, year)
-            self.stats[key]["digit_mean_errors"] = mean_errors.to_dict() 
+            self.stats[key]["digit_mean_errors"] = mean_errors.to_dict()
             self.stats[key]["digit_std_errors"] = var_errors.to_dict()
 
 
@@ -553,7 +553,7 @@ class Validator:
                 fig.add_trace(trace, row=1, col=1)
             fig.add_trace(table_trace, row=2, col=1)
             fig.update_layout(title_text=f'Digit Occurrence Stats and Annotations for {observation} in {year}')
-            if self.show: fig.show()        
+            if self.show: fig.show()
             # Définir une hauteur explicite pour que le tableau soit entièrement visible
             fig.update_layout(
                 title_text=f'Digit Occurrence Stats & Details for {observation} in {year}',
@@ -573,7 +573,7 @@ class Validator:
             generated_dataset_path (str): Chemin vers le fichier CSV des données générées.
         """
 
-                
+
         def analyze_sequences_from_csv(dataset_path, generated_dataset_path, year, type):
             if year == 1 or year ==2:
                 if type == "long":
@@ -642,10 +642,10 @@ class Validator:
             Q = kde_generated(x)
             P_norm = P / np.sum(P * dx)
             Q_norm = Q / np.sum(Q * dx)
-            
+
             # Calcul de la distance de Jensen-Shannon
             js_distance = jensenshannon(P_norm, Q_norm)
-            
+
             # Affichage du résultat sur le graphique dans un encart
             fig.add_annotation(
                 x=0.95, y=0.95, xref="paper", yref="paper",
@@ -674,8 +674,8 @@ class Validator:
             )
             self.save_figure(fig, "log_prob_distribution_of_sequences", type, year)
             return js_distance
-        
-        
+
+
         for year in range(1, 6):
             for type in ["long", "medium"]:
                 js_distance = analyze_sequences_from_csv(self.datapath, generated_dataset_path, year, type)
@@ -686,9 +686,9 @@ class Validator:
                         "js_distance": js_distance
                     }
                 else:
-                    self.stats[key]["js_distance"] = js_distance 
+                    self.stats[key]["js_distance"] = js_distance
 
-    
+
     def compute_metrics(self,data):
         # Pour chaque dataset, on accumule les valeurs
         mean_errors = []
@@ -705,7 +705,7 @@ class Validator:
         series_mean_errors = {i: [] for i in range(5)}   # Pour chaque chiffre
         series_std_errors = {i: [] for i in range(5)}    # Pour chaque chiffre
         num_params = None
-        
+
         # Récupérer la final_val_loss et le nombre de paramètres au niveau parent si ils existent
         if 'final_val' in data:
             final_val_loss = data['final_val']
@@ -713,7 +713,7 @@ class Validator:
         if 'num_params' in data:
             num_params = data['num_params']
 
-        
+
         # Traiter les métriques de couple
         for key, d in data.items():
             if key in ['final_val', 'num_params']:  # On ignore ces clés car déjà traitées
@@ -730,7 +730,7 @@ class Validator:
                 rmse_errors.append(d["rmse_error"])
             if "sequence_length_js_distance" in d:
                 sequence_length_js_distances.append(d["sequence_length_js_distance"])
-            
+
             # Collecter les erreurs de séries pour chaque chiffre
             for digit in range(5):
                 if f"digit_{digit}_series_count_error" in d:
@@ -745,7 +745,7 @@ class Validator:
         all_series_count_errors = []
         all_series_mean_errors = []
         all_series_std_errors = []
-        
+
         for digit in range(5):
             if series_count_errors[digit] and series_mean_errors[digit] and series_std_errors[digit]:
                 series_metrics[f"digit_{digit}_series_count_error"] = (np.mean(series_count_errors[digit]), np.std(series_count_errors[digit]))
@@ -758,7 +758,7 @@ class Validator:
                 series_metrics[f"digit_{digit}_series_count_error"] = (None, None)
                 series_metrics[f"digit_{digit}_series_mean_error"] = (None, None)
                 series_metrics[f"digit_{digit}_series_std_error"] = (None, None)
-        
+
         # Calculer les métriques globales pour toutes les séries
         if all_series_count_errors and all_series_mean_errors and all_series_std_errors:
             series_metrics["series_count_error"] = (np.mean(all_series_count_errors), np.std(all_series_count_errors))
@@ -818,7 +818,7 @@ class Validator:
 
         fig.update_layout(title="Statistics Table")
         if self.show: fig.show()
-    
+
     def plot_stats_graph(self, filepaths=None, experiment_paths=None):
         """
         Affiche un graphique des statistiques à partir de fichiers JSON.
@@ -837,14 +837,14 @@ class Validator:
         # Calculer les métriques pour chaque fichier
         metrics_by_file = {}
 
-        i=0 
+        i=0
         for filepath in filepaths:
             if not os.path.exists(filepath):
                 print(f"Attention: Le fichier {filepath} n'existe pas")
                 continue
 
             data = json.loads(Path(filepath).read_text())
-            
+
             # Si experiment_paths est fourni, récupérer le nom depuis le fichier config
             if experiment_paths:
                 exp_path = Path(filepath).parent
@@ -857,19 +857,19 @@ class Validator:
                     graph_name = Path(filepath).name + f"_{i}"
             else:
                 graph_name = Path(filepath).name + f"_{i}"
-            
+
             metrics_by_file[graph_name] = self.compute_metrics(data)
-        
-            # print(graph_name)   
+
+            # print(graph_name)
 
             i+=1
-        # print(len(metrics_by_file))    
+        # print(len(metrics_by_file))
         if not metrics_by_file:
             raise ValueError("Aucune métrique n'a pu être calculée à partir des fichiers fournis")
 
         # Vérifier si la métrique rmse_error est disponible pour au moins un fichier
         has_full_rmse = True
-        
+
         # Liste des métriques de base
         base_metric_list = ["num_params", "mean_error", "std_error", "percentage_error", "js_distance", "digit_mean_errors", "digit_std_errors", "rmse_error", "sequence_length_js_distance", "final_val_loss", "series_count_error", "series_mean_error", "series_std_error"]
         base_title_list = [
@@ -887,7 +887,7 @@ class Validator:
             "Erreur moyenne de la taille<br>des séries (tous chiffres)",
             "Erreur moyenne de std<br>des séries (tous chiffres)"
         ]
-        
+
         # Supprimer les métriques individuelles par chiffre
         metric_list = base_metric_list
         title_list = base_title_list
@@ -898,24 +898,24 @@ class Validator:
                 metrics_by_file[name]["rmse_error"] = (None, None)
 
         graph_names = list(metrics_by_file.keys())
-        
+
         # Assigner une couleur fixe par fichier
         colors = px.colors.qualitative.Plotly
         color_map = {name: colors[i % len(colors)] for i, name in enumerate(graph_names)}
-        
+
         # Calculer le nombre de lignes et colonnes nécessaires de manière responsive
         n_metrics = len(metric_list)
-        
+
         # Déterminer le nombre de colonnes en fonction de la largeur de l'écran
         # On suppose une largeur minimale de 400px par graphique
         min_graph_width = 400
         screen_width = 1920  # Largeur par défaut, peut être ajustée
         n_cols = max(1, min(3, screen_width // min_graph_width))
         n_rows = (n_metrics + n_cols - 1) // n_cols
-        
+
         # Création de la grille de subplots
         fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=title_list)
- 
+
         # Pour chaque métrique, ajouter un trace par fichier avec sa couleur
         for i, metric in enumerate(metric_list):
             row = i // n_cols + 1
@@ -924,7 +924,7 @@ class Validator:
                 m, s = metrics_by_file[name][metric]
                 m = 0 if m is None else m
                 s = 0 if s is None else s
-                
+
                 # Pour le nombre de paramètres, on utilise une échelle logarithmique
                 if metric == "num_params":
                     fig.add_trace(
@@ -964,7 +964,7 @@ class Validator:
                         ),
                         row=row, col=col
                     )
-        
+
         # Calculer la hauteur et la largeur en fonction du nombre de lignes et colonnes
         height_per_row = 400  # Hauteur par ligne en pixels
         width_per_col = min_graph_width  # Largeur par colonne en pixels
@@ -995,7 +995,7 @@ class Validator:
 
         # Ajuster la taille des polices pour les titres des sous-graphiques
         fig.update_annotations(font_size=14)
-        
+
         # Ajuster la taille des polices pour les axes
         fig.update_xaxes(title_font_size=12, tickfont_size=10)
         fig.update_yaxes(title_font_size=12, tickfont_size=10)
@@ -1044,12 +1044,12 @@ class Validator:
         # Chemin du script Bash stocké dans Windows
         if windows:
             script_path = "/mnt/c/Users/Robin/Documents/Stage pommiers/Transformer_pommiers/script.sh"
-            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/") 
+            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/")
             generated_dataset_path_arg = str("/Transformer_pommiers/" / validation_folder_path / generated_dataset_path).replace("\\","/")
             validation_folder_path_arg = str("/Transformer_pommiers/" / validation_folder_path).replace("\\","/") +"/"
             subprocess.run(["wsl", "bash", script_path,stat_file_path_arg,generated_dataset_path_arg,validation_folder_path_arg])
         else:
-            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/") 
+            stat_file_path_arg =str("/Transformer_pommiers/" / validation_folder_path / stats_file_path).replace("\\","/")
             generated_dataset_path_arg = str("/Transformer_pommiers/" / validation_folder_path / generated_dataset_path).replace("\\","/")
             validation_folder_path_arg = str("/Transformer_pommiers/" / validation_folder_path).replace("\\","/") +"/"
 
@@ -1062,7 +1062,7 @@ class Validator:
                 validation_folder_path_arg
             ]
             subprocess.run(script)
-    
+
     def sequence_series_analysis(self, generated_dataset_path):
         """
         Analyse les séries de chiffres dans les séquences et compare les statistiques entre le dataset original et généré.
@@ -1081,21 +1081,21 @@ class Validator:
             """Compte le nombre de séries d'un chiffre donné et leur taille moyenne."""
             series = []
             current_series = 0
-            
+
             for char in sequence:
                 if char == str(digit):
                     current_series += 1
                 elif current_series > 0:
                     series.append(current_series)
                     current_series = 0
-            
+
             if current_series > 0:
                 series.append(current_series)
-            
+
             # Si aucune série n'est trouvée, retourner 0 pour le nombre et None pour la moyenne
             if not series:
                 return 0, None, None
-            
+
             return len(series), np.mean(series), np.std(series)
 
         for _, row in unique_pairs.iterrows():
@@ -1103,7 +1103,7 @@ class Validator:
             year = row['Year']
             subset = combined_dataset[(combined_dataset['Observation'] == observation) &
                                     (combined_dataset['Year'] == year)].copy()
-            
+
             # Analyse pour chaque chiffre (0-4)
             for digit in range(5):
                 # Calculer les statistiques pour le dataset original
@@ -1111,45 +1111,45 @@ class Validator:
                 ds_series_counts = []
                 ds_series_means = []
                 ds_series_stds = []
-                
+
                 for seq in ds_subset['Sequence']:
                     count, mean, std = count_series(seq, digit)
                     ds_series_counts.append(count)
                     if mean is not None:  # N'ajouter la moyenne que si elle existe
                         ds_series_means.append(mean)
                         ds_series_stds.append(std)
-                
+
                 # Calculer les statistiques pour le dataset généré
                 gen_subset = subset[subset['Source'] == 'Generated Dataset']
                 gen_series_counts = []
                 gen_series_means = []
                 gen_series_stds = []
-                
+
                 for seq in gen_subset['Sequence']:
                     count, mean, std = count_series(seq, digit)
                     gen_series_counts.append(count)
                     if mean is not None:  # N'ajouter la moyenne que si elle existe
                         gen_series_means.append(mean)
                         gen_series_stds.append(std)
-                
+
                 # Calculer les erreurs
                 count_error = abs(np.mean(ds_series_counts) - np.mean(gen_series_counts))
                 # Calculer la moyenne et l'écart-type seulement si des séries existent dans les deux datasets
                 mean_error = abs(np.mean(ds_series_means) - np.mean(gen_series_means)) if ds_series_means and gen_series_means else 0
                 std_error = abs(np.mean(ds_series_stds) - np.mean(gen_series_stds)) if ds_series_stds and gen_series_stds else 0
-                
+
                 # Mettre à jour les statistiques
                 key = (observation, year)
                 if key not in self.stats:
                     self.stats[key] = {}
-                
+
                 self.stats[key][f"digit_{digit}_series_count_error"] = count_error
                 self.stats[key][f"digit_{digit}_series_mean_error"] = mean_error
                 self.stats[key][f"digit_{digit}_series_std_error"] = std_error
-                
+
                 # Créer un graphique pour visualiser les résultats
                 fig = go.Figure()
-                
+
                 # Ajouter les barres pour le nombre de séries
                 fig.add_trace(go.Bar(
                     name='Dataset',
@@ -1162,7 +1162,7 @@ class Validator:
                     ),
                     marker_color='green'
                 ))
-                
+
                 fig.add_trace(go.Bar(
                     name='Généré',
                     x=['Nombre de séries', 'Taille moyenne', 'Écart-type'],
@@ -1174,17 +1174,17 @@ class Validator:
                     ),
                     marker_color='blue'
                 ))
-                
+
                 fig.update_layout(
                     title=f"Statistiques des séries du chiffre {digit} pour {observation} en {year}",
                     barmode='group',
                     height=600,
                     width=800
                 )
-                
+
                 if self.show:
                     fig.show()
-                
+
                 self.save_figure(fig, f"series_analysis_digit_{digit}", observation, year)
 
     def validation_pipeline(self,generated_dataset_path,stats_dataset_path,windows = True,show = False):
@@ -1201,7 +1201,7 @@ class Validator:
         self.sequence_digit_stats(self.validation_folder_path / generated_dataset_path)
         print("[INFO] Validation series analysis")
         self.sequence_series_analysis(self.validation_folder_path / generated_dataset_path)
-  
+
         self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences")
         self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
@@ -1209,23 +1209,23 @@ class Validator:
         # self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
         # self.plot_stats()
 
-        
+
 if __name__ == "__main__":
-    vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16} 
+    vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
     id_to_vocab = {v: k for k, v in vocab_to_id.items()}
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
+
     # Création d'une instance de Validator sans modèle
     validator = Validator(show=True)
-    
+
     # Liste des dossiers d'expériences à valider
-    experiment_paths = [ path for path in Path("experiments").glob("*") if path.is_dir()] 
-    
+    experiment_paths = [ path for path in Path("experiments").glob("*") if path.is_dir()]
+
     # Conversion en objets Path
     experiment_paths = [Path(path) for path in experiment_paths]
-     
-    
+
+
     # Exécution des validations pour chaque expérience
     # for exp_path in experiment_paths:
     #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
     #     # Chemins des fichiers
     #     generated_dataset_path =  "generated_dataset.csv"
     #     stats_dataset_path = "generated_dataset_validation_stats.json"
-        
+
         # Exécution de la validation pipeline
         # validator.validation_pipeline(
         #     generated_dataset_path=generated_dataset_path,
@@ -1241,7 +1241,7 @@ if __name__ == "__main__":
         #     windows=True,
         #     show=False
         # )
-        
+
         # Exécution des validations supplémentaires
         # print("[INFO] Validation RMSE et log probability sequence metric")
         # validator.rmse_and_log_probability_sequence_metric_sequence_analysis(
@@ -1250,13 +1250,13 @@ if __name__ == "__main__":
         #     validation_folder_path=exp_path,
         #     windows=False
         # )
-        
+
     #     print("[INFO] Validation log prob distribution of sequences")
     #     validator.log_prob_distribution_of_sequences(
     #         generated_dataset_path=generated_dataset_path,
     #         from_csv=True
     #     )
-    
+
     # Affichage du graphique de comparaison final
     print("\n[INFO] Génération du graphique de comparaison des statistiques")
     validator.plot_stats_graph(experiment_paths=experiment_paths)
