@@ -1,0 +1,48 @@
+[project]
+name = "transformer-pommiers"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13.0"
+dependencies = [
+    "click>=8.2.0",
+    "fsspec>=2025.3.2",
+    "gitpython>=3.1.44",
+    "jupyter-client>=8.6.3",
+    "jupyter-core>=5.7.2",
+    "matplotlib>=3.10.3",
+    "networkx>=3.4.2",
+    "numpy>=2.2.6",
+    "optuna>=4.3.0",
+    "pandas>=2.2.3",
+    "pillow>=11.2.1",
+    "plotly>=6.1.0",
+    "protobuf>=6.31.0",
+    "psutil>=7.0.0",
+    "pydantic>=2.11.4",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+    "scipy>=1.15.3",
+    "sentry-sdk>=2.29.1",
+    "sympy>=1.14.0",
+    "thop>=0.1.1.post2209072238",
+    "toml>=0.10.2",
+    "torch>=2.7.0",
+    "torchaudio>=2.7.0",
+    "torchvision>=0.22.0",
+    "tqdm>=4.67.1",
+    "wandb>=0.19.11",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu118", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu118", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]

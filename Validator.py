@@ -5,7 +5,7 @@ from tqdm import tqdm
 import plotly.express as px
 from scipy.stats import gaussian_kde
 from scipy.spatial.distance import jensenshannon
-from HSMM import HSMM
+from utils.HSMM import HSMM
 import numpy as np
 import plotly.graph_objects as go
 import json
@@ -18,6 +18,16 @@ from plotly.subplots import make_subplots
 from pathlib import Path  # si besoin d'utiliser pathlib ailleurs
 import subprocess
 from time import time
+
+class ValidationError(Exception):
+    """Exception levée lors d'une erreur de validation."""
+    pass
+
+class GPUOutOfMemoryError(Exception):
+    """Exception levée lors d'une erreur de mémoire GPU."""
+    pass
+
+
 class Validator: 
     """
     Classe Validator pour valider et analyser des séquences générées par un modèle Transformer.

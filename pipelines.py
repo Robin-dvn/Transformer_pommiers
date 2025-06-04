@@ -21,15 +21,15 @@ from tqdm import tqdm
 import wandb
 
 # Local imports
-from EarlyStopping import EarlyStopping
+from utils.EarlyStopping import EarlyStopping
 from PommierDataset import (
     PommierDatasetDecoderOnly,
     collate_fn_decoder_only,
     DecoderOnlyDynamicPommierDataset
 )
 from transformer import TransformerDecoderOnly
-from Validator import Validator
-from ValidationError import ValidationError, GPUOutOfMemoryError
+from Validator import Validator, GPUOutOfMemoryError,ValidationError
+
 
 def model_size_mb(model):
     """

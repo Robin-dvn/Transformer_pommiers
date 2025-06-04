@@ -1,12 +1,12 @@
 
 from PommierDataset import PommierDataset,collate_fn
-from ValidationError import ValidationError
+from Validator import ValidationError, GPUOutOfMemoryError
 from torch.utils.data import DataLoader
 from torch import Tensor
 from tqdm import tqdm
 
 import math
-import torch 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -35,14 +35,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, 
-                 activation=F.relu, layer_norm_eps=1e-5, batch_first=False, 
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+                 activation=F.relu, layer_norm_eps=1e-5, batch_first=False,
                  norm_first=False, bias=True, device=None, dtype=None):
-        super().__init__(d_model, nhead, dim_feedforward, dropout, activation, 
+        super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
                          layer_norm_eps, batch_first, norm_first, bias, device, dtype)
-        
-    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None, 
-                tgt_key_padding_mask=None, memory_key_padding_mask=None, 
+
+    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
+                tgt_key_padding_mask=None, memory_key_padding_mask=None,
                 tgt_is_causal=False, memory_is_causal=False):
         """
         Version Decoder-Only :
@@ -59,68 +59,10 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
             x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
             # 🚀 Cross-Attention supprimé 🚀
             x = self.norm2(x + self._ff_block(x))  # FFN
-        
+
         return x
 
 
-class Transformer(nn.Module):
-
-
-    def __init__(self,in_vocab_size,out_vocab_size,d_model,n_head,padding_idx,nb_layer= 3,dim_feedforward=2048) -> None:
-        super(Transformer,self).__init__()
-        self.embed = nn.Embedding(in_vocab_size,d_model,padding_idx=padding_idx)
-        self.posEmbed = PositionalEncoding(d_model)
-        self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=12,num_encoder_layers=3,dim_feedforward=1024)
-        self.fc_l = nn.Linear(d_model,out_vocab_size)
-        self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
-    def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
-
-        s_emb = self.embed(src)
-        t_emb = self.embed(tgt)
-        s_p_emb = self.posEmbed(s_emb)
-        t_p_emb = self.posEmbed(t_emb)
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
-        
-        out_trans = self.transformer(
-            s_p_emb, t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
-        )
-        out = self.fc_l(out_trans)
-        return out
-
-
-
-    def generate_batch(self, enc_input, sos_idx, device, end_toks_list, temperature=1, max_length=200, batch_size=1):
-        self.eval()
-        sequence = torch.tensor([[sos_idx]] * batch_size, device=device)
-        stop_mask = torch.tensor([False] * batch_size, device=device)
-
-        for i in tqdm(range(max_length), colour="green"):
-            with torch.no_grad():
-                logits = self(enc_input, sequence)
-                logits = logits[:, -1, :] / temperature
-
-            probs = F.softmax(logits, dim=-1)
-            cutoff = 0.0008
-            probs = torch.where(probs < cutoff, torch.tensor(0.0, device=probs.device), probs)
-
-            # Renormaliser les probabilités pour qu'elles forment toujours une distribution valide
-            probs = probs / probs.sum()
-            next_tokens = torch.multinomial(probs, 1)
-            while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
-                next_tokens = torch.multinomial(probs, 1)
-            sequence = torch.cat([sequence, next_tokens], dim=1)
-
-            has_end_tok = torch.isin(next_tokens, torch.tensor(end_toks_list, device=self.device))
-            stop_mask = stop_mask | has_end_tok.flatten()
-            if stop_mask.all():
-                break
-
-        # Si max_length est atteint (aucun token de fin n'a été généré), ajoute une colonne contenant le token 7
-        if sequence.shape[1] == max_length + 1:
-            col7 = torch.full((batch_size, 1), 7, device=device)
-            sequence = torch.cat([sequence, col7], dim=1)
-
-        return sequence
 
 import math
 import torch
@@ -155,7 +97,7 @@ class TransformerDecoderOnly(nn.Module):
             t_p_emb,memory=None, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
         # print(out_trans[:,:3,:])
-        
+
         if not generating : out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
 
         out = self.fc_out(out_trans)
@@ -193,7 +135,7 @@ class TransformerDecoderOnly(nn.Module):
                         # break
             nb_max = 0
             while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
-                
+
                 next_tokens = torch.multinomial(probs, 1)
                 nb_max += 1
                 if nb_max > 10:
