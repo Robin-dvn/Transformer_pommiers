@@ -26,10 +26,18 @@ import math
 from torch.utils.data import DataLoader
 from torch import Tensor
 from tqdm import tqdm
-from Validator import ValidationError, GPUOutOfMemoryError
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+class ValidationError(Exception):
+    """Exception levée lors d'une erreur de validation."""
+    pass
+
+class GPUOutOfMemoryError(Exception):
+    """Exception levée lors d'une erreur de mémoire GPU."""
+    pass
 
 class PositionalEncoding(nn.Module):
     """

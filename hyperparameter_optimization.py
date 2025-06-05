@@ -4,11 +4,6 @@ Hyperparameter Optimization Script for Transformer Models.
 This script uses Optuna to optimize hyperparameters for training a Transformer model.
 It defines the search space, executes trials, and saves the best results.
 
-Modules:
-    - optuna: For hyperparameter optimization.
-    - numpy, pandas: For data manipulation.
-    - json, os, sys, subprocess: For file handling and system operations.
-    - pipelines: Contains the training and validation pipeline.
 
 Functions:
     - objective: Defines the objective function for Optuna.

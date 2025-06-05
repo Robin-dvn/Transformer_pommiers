@@ -2,9 +2,9 @@ from typing import Dict, List, Tuple, Union, Optional
 
 import numpy as np
 import pathlib
-import srandom
-from enums import Observation, Zone
-from markov import Markov, MarkovSequence
+import vmapplet_utils.srandom
+from vmapplet_utils.enums import Observation, Zone
+from vmapplet_utils.markov import Markov, MarkovSequence
 
 Sequence = List[Tuple[Union[Zone, None], int]]
 TerminalFateData = Dict[Tuple[int, Observation], List[float]]

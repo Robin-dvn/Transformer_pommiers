@@ -59,9 +59,9 @@ def create_config_file(file_path, config_dict):
         TypeError: If config_dict is not a dictionary.
     """
     if not isinstance(config_dict, dict):
-        raise TypeError("config_dict doit être un dictionnaire")
+        raise TypeError("config_dict must be a dictionary")
 
-    # Conversion des objets Path en chaînes de caractères pour la sérialisation JSON
+    # Convert Path objects to strings for JSON serialization
     config_dict_serializable = {
         k: str(v) if isinstance(v, Path) else v
         for k, v in config_dict.items()
@@ -71,7 +71,7 @@ def create_config_file(file_path, config_dict):
         with open(file_path, 'w', encoding='utf-8') as json_file:
             json.dump(config_dict_serializable, json_file, indent=4)
     except IOError as e:
-        raise IOError(f"Impossible de créer le fichier de configuration: {e}") from e
+        raise IOError(f"Unable to create the configuration file: {e}") from e
 
 def train_decoder_only(config_dict, trial=None):
     """
@@ -232,7 +232,7 @@ def train_decoder_only(config_dict, trial=None):
         print(f"Le modèle occupe environ {size_mb:.2f} Mo en mémoire.")
         criterion_unweighted = torch.nn.CrossEntropyLoss(ignore_index=padding_idx)
 
-        # Setup GradScaler si auto_precision est activé
+        # Setup GradScaler if auto_precision is enabled
         scaler = torch.amp.GradScaler(device=device) if auto_precision else None
 
         # Training loop
@@ -283,7 +283,7 @@ def train_decoder_only(config_dict, trial=None):
 
                     total_train_loss_unweighted += loss_unweighted.item()
 
-                    # Log le learning rate à chaque batch
+                    # Log the learning rate at each batch
                     current_lr = optimizer.param_groups[0]['lr']
                     # wandb.log({"batch_learning_rate": current_lr}, step=global_batch)
                     global_batch += 1
@@ -327,13 +327,13 @@ def train_decoder_only(config_dict, trial=None):
 
             val_losses.append(avg_val_loss_unweighted)  # Stockage de la perte de validation
 
-            # Si on est dans un trial Optuna, on enregistre la perte de validation à chaque époque
+            # If in an Optuna trial, record the validation loss at each epoch
             if trial is not None:
                 trial.report(avg_val_loss_unweighted, step=epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
 
-                # Mise à jour de la meilleure perte de validation
+                # Update the best validation loss
                 best_val_loss = min(best_val_loss, avg_val_loss_unweighted)
 
             wandb.log({
@@ -358,10 +358,10 @@ def train_decoder_only(config_dict, trial=None):
             'optimizer_state_dict': optimizer.state_dict()
         }, experiment_path / "model_state.pth")
 
-        # Calcul de la moyenne sur les 20 dernières époques
+        # Calculate the average over the last 20 epochs
         last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
 
-        # Si on est dans un trial Optuna, on utilise la moyenne des 20 dernières époques
+        # If in an Optuna trial, use the average of the last 20 epochs
         final_val_loss = last_20_epochs_val_loss
 
         return model, experiment_path, final_val_loss, wandb.run
@@ -440,39 +440,39 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     et = time()
     print(f"[INFO] le temps en minutes pour la validation est de : {(et-st)/60}")
 
-    # Lecture des statistiques de validation
+    # Read validation statistics
     with open(experiment_path / "generated_dataset_validation_stats.json", "r", encoding='utf-8') as f:
         stats = json.load(f)
 
-    # Calcul du nombre de paramètres du modèle
+    # Calculate the number of model parameters
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    # Stockage de la perte de validation et du nombre de paramètres dans le validator pour retour
+    # Store the validation loss and number of parameters in the validator for return
     stats["final_val"] = final_val_loss
     stats["num_params"] = num_params
 
     with open(experiment_path / "generated_dataset_validation_stats.json", "w", encoding='utf-8') as f:
         json.dump(stats, f)
-    # Calcul des métriques globales
+    # Calculate global metrics
     metrics = validator.compute_metrics(stats)
 
-    # Si on est dans un trial Optuna, on enregistre toutes les métriques
+    # If in an Optuna trial, record all metrics
     if trial is not None:
-        # Enregistrement de la perte de validation finale (moyenne sur les 20 dernières époques)
+        # Record the final validation loss (average over the last 20 epochs)
         trial.set_user_attr('final_val', final_val_loss)
         trial.set_user_attr('num_params', num_params)
 
-        # Enregistrement des métriques de validation
+        # Record validation metrics
         for metric_name, (mean, std) in metrics.items():
             if mean is not None:  # On n'enregistre que les métriques qui ont des valeurs
                 trial.set_user_attr(f'{metric_name}_mean', mean)
                 trial.set_user_attr(f'{metric_name}_std', std)
 
-    # Fermeture de la run wandb avec ou sans synchronisation en ligne
+    # Close the wandb run with or without online synchronization
     if sync_wandb:
-        # On termine d'abord la run en mode offline
+        # First, finish the run in offline mode
         wandb_run.finish(quiet=True)
-        # Puis on synchronise en ligne en utilisant l'ID unique de la run
+        # Then synchronize online using the unique run ID
         print("[INFO] Synchronisation des données wandb en ligne...")
         try:
             run_path = find_wandb_run_path(wandb_run.id)
