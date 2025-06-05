@@ -21,7 +21,7 @@ if __name__ == "__main__":
         # Configuration de base pour test
         configs = [(15, 32, 1024)]  # Uniquement la première configuration pour le test
         nb_epochs = 1  # Réduit à 1 epoch pour le test
-        sync = True
+        sync = False
         print("=== Mode Test ===")
     else:
         # Configuration de base complète
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     for nb_layers, d_model, dim_feedforward in configs:
         config_dict = {
-            'dataset_path': "out/markov_python_generated_dataset10000.csv",
+            'dataset_path': "dataset/markov_python_generated_dataset10000.csv",
             'seed': 42,
             'batch_size': 512,
             'val_split': 0.8,
@@ -72,7 +72,7 @@ if __name__ == "__main__":
                 'params': {}
             },
             'continue_training': True,
-            'checkpoint_path': "model_state.pth",
+            'checkpoint_path': "C:\\Users\\Daven\\Documents\\Stage CIRAD\\Transformer_pommiers\\experiments\\DO_NBL-15_DM-32_DFF-1024_TS-20250326-153331\\model_state.pth",
             'auto_precision': True,
             'graph_name': f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_baseline"
         }

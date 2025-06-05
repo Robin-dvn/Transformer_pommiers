@@ -1226,7 +1226,7 @@ class Validator:
     def validation_pipeline(self,generated_dataset_path,stats_dataset_path,windows = True,show = False):
         self.show = show
         self.load_stats(self.validation_folder_path / stats_dataset_path)
-        self.load_data("out/markov_python_generated_dataset10000.csv")
+        self.load_data("dataset/markov_python_generated_dataset10000.csv")
 
 
         print("[INFO] Validation markov model au file: ", self.validation_folder_path / generated_dataset_path)
@@ -1242,7 +1242,7 @@ class Validator:
 
         self.save_stats(self.validation_folder_path / stats_dataset_path)
         print("[INFO] Validation log prob distribution of sequences and rmse of inferenced markov model probabilities")
-        self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
+        # self.rmse_and_log_probability_sequence_metric_sequence_analysis(generated_dataset_path,stats_dataset_path,self.validation_folder_path,windows)
 
         # self.log_prob_distribution_of_sequences(self.validation_folder_path / generated_dataset_path,from_csv = True)
         # self.plot_stats_graph([self.validation_folder_path / stats_dataset_path])
@@ -1266,20 +1266,21 @@ if __name__ == "__main__":
 
 
     # Exécution des validations pour chaque expérience
-    # for exp_path in experiment_paths:
-    #     print(f"\n[INFO] Validation de l'expérience: {exp_path}")
-    #     validator.validation_folder_path = exp_path
-    #     # Chemins des fichiers
-    #     generated_dataset_path =  "generated_dataset.csv"
-    #     stats_dataset_path = "generated_dataset_validation_stats.json"
+    for exp_path in experiment_paths:
+        print(f"\n[INFO] Validation de l'expérience: {exp_path}")
+        validator.validation_folder_path = exp_path
+        # Chemins des fichiers
+        generated_dataset_path =  "generated_dataset.csv"
+        stats_dataset_path = "generated_dataset_validation_stats.json"
 
         # Exécution de la validation pipeline
-        # validator.validation_pipeline(
-        #     generated_dataset_path=generated_dataset_path,
-        #     stats_dataset_path=stats_dataset_path,
-        #     windows=True,
-        #     show=False
-        # )
+
+        validator.validation_pipeline(
+            generated_dataset_path=generated_dataset_path,
+            stats_dataset_path=stats_dataset_path,
+            windows=True,
+            show=False
+        )
 
         # Exécution des validations supplémentaires
         # print("[INFO] Validation RMSE et log probability sequence metric")
@@ -1290,12 +1291,12 @@ if __name__ == "__main__":
         #     windows=False
         # )
 
-    #     print("[INFO] Validation log prob distribution of sequences")
-    #     validator.log_prob_distribution_of_sequences(
-    #         generated_dataset_path=generated_dataset_path,
-    #         from_csv=True
-    #     )
+        # print("[INFO] Validation log prob distribution of sequences")
+        # validator.log_prob_distribution_of_sequences(
+        #     generated_dataset_path=generated_dataset_path,
+        #     from_csv=True
+        # )
 
     # Affichage du graphique de comparaison final
-    print("\n[INFO] Génération du graphique de comparaison des statistiques")
-    validator.plot_stats_graph(experiment_paths=experiment_paths)
+    # print("\n[INFO] Génération du graphique de comparaison des statistiques")
+    # validator.plot_stats_graph(experiment_paths=experiment_paths)

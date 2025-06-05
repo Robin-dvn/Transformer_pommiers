@@ -198,7 +198,7 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
 if __name__ == "__main__":
     VAL_SPLIT = 0.8
     vocab_to_id ={'<PAD>': 0, '<SOS>': 1, '0': 2, '1': 3, '2': 4, '3': 5, '4': 6, 'DORMANT': 7, 'FLORAL': 8, 'LARGE': 9, 'MEDIUM': 10, 'SMALL': 11, 'Y1': 12, 'Y2': 13, 'Y3': 14, 'Y4': 15, 'Y5': 16}
-    static_dataset = PommierDatasetDecoderOnly("out/markov_python_generated_dataset10000.csv")
+    static_dataset = PommierDatasetDecoderOnly("dataset/markov_python_generated_dataset10000.csv")
     dataset = DecoderOnlyDynamicPommierDataset(vocab_to_id, 10000, 4, 70)
     train_size = int(VAL_SPLIT * len(static_dataset))
     val_size = len(static_dataset) - train_size

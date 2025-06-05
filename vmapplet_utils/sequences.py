@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple, Union, Optional
 
 import numpy as np
 import pathlib
-import vmapplet_utils.srandom
+import vmapplet_utils.srandom as srandom
 from vmapplet_utils.enums import Observation, Zone
 from vmapplet_utils.markov import Markov, MarkovSequence
 

@@ -277,5 +277,5 @@ class DatasetCreatorCustomHSMM:
 
 if __name__ == "__main__":
     # Exemple d'utilisation
-    datasetcreator = DatasetCreatorCustomHSMM("out/", 10000, 4, 70)
+    datasetcreator = DatasetCreatorCustomHSMM("dataset/", 10000, 4, 70)
     datasetcreator.create_data(True)
