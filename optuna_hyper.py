@@ -54,13 +54,12 @@ def objective(trial):
 if __name__ == "__main__":
     # Création de l'étude Optuna avec pruning
     pruner = optuna.pruners.MedianPruner(
-        n_startup_trials=5,      # Nombre de trials avant de commencer le pruning
-        n_warmup_steps=10,       # Nombre d'étapes avant de commencer le pruning
+        n_startup_trials=10,      # Nombre de trials avant de commencer le pruning
+        n_warmup_steps=300,       # Nombre d'étapes avant de commencer le pruning
         interval_steps=1,        # Intervalle entre les évaluations de pruning
-        n_min_trials=5,          # Nombre minimum de trials pour le pruning
-        n_warmup_trials=5        # Nombre de trials de warmup
+        n_min_trials=10,          # Nombre minimum de trials pour le pruning
+ 
     )
-    
     study = optuna.create_study(
         direction="minimize",
         study_name="transformer_optimization",
@@ -70,7 +69,7 @@ if __name__ == "__main__":
     # Optimisation
     study.optimize(
         objective,
-        n_trials=50,  # Nombre d'essais à effectuer
+        n_trials=28,  # Nombre d'essais à effectuer
         n_jobs=1,     # Nombre de jobs parallèles
         show_progress_bar=True,
         gc_after_trial=True  # Nettoie la mémoire après chaque essai

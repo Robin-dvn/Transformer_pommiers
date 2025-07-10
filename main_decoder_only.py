@@ -7,7 +7,7 @@ if __name__ == "__main__":
     if test:
         # Configuration de base pour test
         configs = [(15, 32, 1024)]  # Uniquement la première configuration pour le test
-        nb_epochs = 1  # Réduit à 1 epoch pour le test
+        nb_epochs = 500  # Réduit à 1 epoch pour le test
         sync = True
         print("=== Mode Test ===")
     else:
@@ -18,13 +18,13 @@ if __name__ == "__main__":
             (27, 32, 128),   # NBL-27_DM-32_DFF-128
             (27, 32, 256),   # NBL-27_DM-32_DFF-256
             (8, 32, 2048),   # NBL-8_DM-32_DFF-2048
-            
+
             # Configuration avec d_model = 64
             (15, 64, 1024),  # NBL-15_DM-64_DFF-1024
             (27, 64, 128),   # NBL-27_DM-64_DFF-128
             (27, 64, 256),   # NBL-27_DM-64_DFF-256
             (8, 64, 2048),   # NBL-8_DM-64_DFF-2048
-            
+
             # # Configuration avec d_model = 128
             (15, 128, 1024),  # NBL-15_DM-128_DFF-1024
             # (27, 128, 128),   # NBL-27_DM-128_DFF-128
@@ -58,8 +58,8 @@ if __name__ == "__main__":
                 'name': 'None',
                 'params': {}
             },
-            'continue_training': True,
-            'checkpoint_path': "model_state.pth",
+            'continue_training': False,
+            'checkpoint_path': None,
             'auto_precision': True,
             'graph_name': f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_baseline"
         }
@@ -75,22 +75,19 @@ if __name__ == "__main__":
         }
         config_cyclical["graph_name"] = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_cyclical"
 
-        print(f"=== {'Test' if test else 'Essai'} cyclical learning rate ===")
-        validator_cyclical = train_generate_validate_pipeline(config_cyclical,sync_wandb=sync)
+        # print(f"=== {'Test' if test else 'Essai'} cyclical learning rate ===")
+        # validator_cyclical = train_generate_validate_pipeline(config_cyclical,sync_wandb=sync)
 
-        #Essai de early stopping
-        config_early = config_dict.copy()
-        config_early["scheduler"] = {
-            "name": "None",
-            "params": {}
-        }
-        config_early["early_stopping"] = {
-            "name": "patience",
-            "params": {"patience": 100, "verbose": True, "delta": 0.005}
-        }
-        config_early["graph_name"] = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_early"
-        print(f"=== {'Test' if test else 'Essai'} early stopping ===")
-        validator_early = train_generate_validate_pipeline(config_early,sync_wandb=sync)
-
-
-
+        # #Essai de early stopping
+        # config_early = config_dict.copy()
+        # config_early["scheduler"] = {
+        #     "name": "None",
+        #     "params": {}
+        # }
+        # config_early["early_stopping"] = {
+        #     "name": "patience",
+        #     "params": {"patience": 100, "verbose": True, "delta": 0.005}
+        # }
+        # config_early["graph_name"] = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_early"
+        # print(f"=== {'Test' if test else 'Essai'} early stopping ===")
+        # validator_early = train_generate_validate_pipeline(config_early,sync_wandb=sync)

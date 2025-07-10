@@ -6,7 +6,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 import math
-import torch 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -14,6 +14,26 @@ import torch.nn.functional as F
 
 
 class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, :x.size(1), :]  # [B, T, D]
+
+
+        return self.dropout(x)
+
+class BadPositionalEncoding(nn.Module):
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -35,14 +55,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, 
-                 activation=F.relu, layer_norm_eps=1e-5, batch_first=False, 
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+                 activation=F.relu, layer_norm_eps=1e-5, batch_first=False,
                  norm_first=False, bias=True, device=None, dtype=None):
-        super().__init__(d_model, nhead, dim_feedforward, dropout, activation, 
+        super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
                          layer_norm_eps, batch_first, norm_first, bias, device, dtype)
-        
-    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None, 
-                tgt_key_padding_mask=None, memory_key_padding_mask=None, 
+
+    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
+                tgt_key_padding_mask=None, memory_key_padding_mask=None,
                 tgt_is_causal=False, memory_is_causal=False):
         """
         Version Decoder-Only :
@@ -59,7 +79,7 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
             x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
             # 🚀 Cross-Attention supprimé 🚀
             x = self.norm2(x + self._ff_block(x))  # FFN
-        
+
         return x
 
 
@@ -72,7 +92,7 @@ class Transformer(nn.Module):
         self.posEmbed = PositionalEncoding(d_model)
         self.transformer = nn.Transformer(d_model,n_head,batch_first=True,dropout=0.1,num_decoder_layers=12,num_encoder_layers=3,dim_feedforward=1024)
         self.fc_l = nn.Linear(d_model,out_vocab_size)
-        self.device = "cuda" if torch.cuda.is_available() else 'cpu' 
+        self.device = "cuda" if torch.cuda.is_available() else 'cpu'
     def forward(self, src: Tensor, tgt: Tensor, tgt_key_padding_mask: Tensor = None) -> Tensor:
 
         s_emb = self.embed(src)
@@ -80,7 +100,7 @@ class Transformer(nn.Module):
         s_p_emb = self.posEmbed(s_emb)
         t_p_emb = self.posEmbed(t_emb)
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(self.device)
-        
+
         out_trans = self.transformer(
             s_p_emb, t_p_emb, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
@@ -155,7 +175,7 @@ class TransformerDecoderOnly(nn.Module):
             t_p_emb,memory=None, tgt_mask=tgt_mask, tgt_is_causal=True, tgt_key_padding_mask=tgt_key_padding_mask
         )
         # print(out_trans[:,:3,:])
-        
+
         if not generating : out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
 
         out = self.fc_out(out_trans)
@@ -193,7 +213,7 @@ class TransformerDecoderOnly(nn.Module):
                         # break
             nb_max = 0
             while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
-                
+
                 next_tokens = torch.multinomial(probs, 1)
                 nb_max += 1
                 if nb_max > 10:
