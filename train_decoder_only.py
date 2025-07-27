@@ -88,8 +88,8 @@ if __name__ == "__main__":
         }
         config_cyclical["graph_name"] = f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_cyclical"
 
-        print(f"=== {'Test' if test else 'Essai'} cyclical learning rate ===")
-        validator_cyclical = train_generate_validate_pipeline(config_cyclical,sync_wandb=sync)
+        # print(f"=== {'Test' if test else 'Essai'} cyclical learning rate ===")
+        # validator_cyclical = train_generate_validate_pipeline(config_cyclical,sync_wandb=sync)
 
         #Essai de early stopping
         config_early = config_dict.copy()

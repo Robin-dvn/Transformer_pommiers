@@ -40,14 +40,26 @@ class GPUOutOfMemoryError(Exception):
     pass
 
 class PositionalEncoding(nn.Module):
-    """
-    Adds positional encoding to token embeddings.
 
-    Args:
-        d_model (int): Dimension of the model.
-        dropout (float): Dropout rate for positional encoding.
-        max_len (int): Maximum sequence length for positional encoding.
-    """
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, :x.size(1), :]  # [B, T, D]
+
+
+        return self.dropout(x)
+
+class BadPositionalEncoding(nn.Module):
 
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
@@ -99,7 +111,11 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
                  activation=F.relu, layer_norm_eps=1e-5, batch_first=False,
                  norm_first=False, bias=True, device=None, dtype=None):
         super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
+        super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
                          layer_norm_eps, batch_first, norm_first, bias, device, dtype)
+
+    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
+                tgt_key_padding_mask=None, memory_key_padding_mask=None,
 
     def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
                 tgt_key_padding_mask=None, memory_key_padding_mask=None,
@@ -132,6 +148,7 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
             x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
             # 🚀 Cross-Attention supprimé 🚀
             x = self.norm2(x + self._ff_block(x))  # FFN
+
 
         return x
 
@@ -188,6 +205,7 @@ class TransformerDecoderOnly(nn.Module):
         )
         # print(out_trans[:,:3,:])
 
+
         if not generating : out_trans = out_trans * (~tgt_key_padding_mask.unsqueeze(-1))  # Masque les positions padding
 
         out = self.fc_out(out_trans)
@@ -240,6 +258,7 @@ class TransformerDecoderOnly(nn.Module):
                         # break
             nb_max = 0
             while torch.any(torch.isin(next_tokens, torch.tensor([0, 1, 12, 13, 14, 15, 16], device=self.device))):
+
 
                 next_tokens = torch.multinomial(probs, 1)
                 nb_max += 1

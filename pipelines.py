@@ -116,7 +116,7 @@ def train_decoder_only(config_dict, trial=None):
         # Generate a timestamp for the experiment name
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_name = (
-            f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_TS-{timestamp}"
+            f"DO_NBL-{nb_layers}_DM-{d_model}_DFF-{dim_feedforward}_TS-{timestamp}_optuna"
         )
         experiment_path = Path("experiments") / exp_name
         experiment_path.mkdir(parents=True, exist_ok=True)
@@ -490,4 +490,4 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     else:
         wandb_run.finish(quiet=True)
 
-    return metrics["final_val"]
+    return stats["final_val"]
