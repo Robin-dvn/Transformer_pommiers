@@ -131,7 +131,7 @@ class Markov:
             elif distribution["distribution"] == "BINOMIAL":
                 fn = self._rng.binomial
                 probability = distribution["probability"]
-                parameters = (1, probability)
+                parameters = (ubound-lbound, probability)
             elif distribution["distribution"] == "POISSON":
                 fn = self._rng.poisson
                 parameter = distribution["parameter"]
@@ -141,11 +141,7 @@ class Markov:
                     f"Distribution {distribution['distribution']} not supported"
                 )
 
-            while True:
-                occupancy = fn(*parameters)
-                
-                if occupancy >= lbound and occupancy <= ubound:
-                    break
+            occupency = fn(*parameters)+lbound
             occupancies.append(occupancy)
 
         # early return if we know we do not satisfy bounds
