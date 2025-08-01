@@ -1,19 +1,20 @@
 """
 DatasetCreator Module
 
-Ce module contient deux classes principales pour la génération de datasets basés sur des modèles de Markov et HSMM (Hidden Semi-Markov Models).
-Les datasets générés peuvent être exportés en fichiers CSV pour une utilisation ultérieure.
+This module contains two main classes for generating datasets based on Markov and HSMM (Hidden Semi-Markov Models).
+The generated datasets can be exported as CSV files for later use.
 
 Classes:
-- DatasetCreator: Génère des séquences basées sur des modèles de Markov.
-- DatasetCreatorCustomHSMM: Génère des séquences basées sur des modèles HSMM.
+    - DatasetCreator: Generates sequences based on Markov models.
+    - DatasetCreatorCustomHSMM: Generates sequences based on HSMM models.
 
 Usage:
-    - Instanciez l'une des classes avec les paramètres nécessaires.
-    - Appelez la méthode `create_data` pour générer les données.
-    - Optionnellement, exportez les données en CSV.
+    - Instantiate one of the classes with the required parameters.
+    - Call the `create_data` method to generate the data.
+    - Optionally, export the data to CSV.
 """
 
+# System imports
 import os
 import pathlib
 import random
@@ -23,12 +24,14 @@ from itertools import product
 from datetime import datetime
 from time import time
 
+# Third-party imports
 import numpy as np
 import pandas as pd
 import toml
 from tqdm import tqdm
 from colorama import Fore, Style
 
+# Local imports
 from vmapplet_utils.markov import Markov, MarkovModel
 from vmapplet_utils.sequences import generate_sequence, terminal_fate, _generate_random_draw_sequence
 from vmapplet_utils.enums import Observation
@@ -37,36 +40,36 @@ from utils.HSMM import HSMM
 
 def get_shared_data_path(path: str) -> str:
     """
-    Retourne le chemin absolu vers le dossier partagé contenant les données.
+    Returns the absolute path to the shared data folder.
 
     Args:
-        path (str): Chemin relatif à partir du dossier `data`.
+        path (str): Relative path from the `data` folder.
 
     Returns:
-        str: Chemin absolu vers le fichier ou dossier spécifié.
+        str: Absolute path to the specified file or folder.
     """
-    return str((pathlib.Path(__file__).parent / "./data" / path).resolve())
+    return str((pathlib.Path(__file__).parent.parent / "./data" / path).resolve())
 
 
 class DatasetCreator:
     """
-    Classe pour générer des datasets basés sur des modèles de Markov.
+    Class for generating datasets based on Markov models.
 
     Attributes:
-        dataset (pd.DataFrame): Dataset généré.
-        tokenised_dataset (pd.DataFrame): Dataset tokenisé (non utilisé dans cette version).
+        dataset (pd.DataFrame): Generated dataset.
+        tokenised_dataset (pd.DataFrame): Tokenized dataset (not used in this version).
     """
 
     def __init__(self, outpath, seed, min_length, max_length, nb_samples_per_model) -> None:
         """
-        Initialise le DatasetCreator.
+        Initialize the DatasetCreator.
 
         Args:
-            outpath (str): Chemin de sortie pour les fichiers générés.
-            seed (int): Seed pour la reproductibilité.
-            min_length (int): Longueur minimale des séquences.
-            max_length (int): Longueur maximale des séquences.
-            nb_samples_per_model (int): Nombre d'échantillons à générer par modèle.
+            outpath (str): Output path for generated files.
+            seed (int): Seed for reproducibility.
+            min_length (int): Minimum sequence length.
+            max_length (int): Maximum sequence length.
+            nb_samples_per_model (int): Number of samples to generate per model.
         """
         self.year_no = 0
         self._number_samples_per_model = nb_samples_per_model
@@ -95,7 +98,7 @@ class DatasetCreator:
 
     def _set_markov_model(self):
         """
-        Configure les modèles Markov en fonction de l'année actuelle.
+        Configure Markov models according to the current year.
         """
         if self.year_no == 0:
             self._markov.set_models(
@@ -125,11 +128,11 @@ class DatasetCreator:
 
     def create_data(self, to_CSV=False, rewrite=True):
         """
-        Génère les données et les stocke dans un DataFrame.
+        Generate the data and store it in a DataFrame.
 
         Args:
-            to_CSV (bool): Si True, exporte les données en CSV.
-            rewrite (bool): Si True, écrase les fichiers existants.
+            to_CSV (bool): If True, export the data to CSV.
+            rewrite (bool): If True, overwrite existing files.
         """
         usedObservations = [
             Observation.SMALL,
@@ -174,28 +177,28 @@ class DatasetCreator:
 
     def load_data(self, path):
         """
-        Charge un dataset existant depuis un fichier CSV.
+        Load an existing dataset from a CSV file.
 
         Args:
-            path (str): Chemin vers le fichier CSV.
+            path (str): Path to the CSV file.
         """
         self.dataset = pd.read_csv(path)
 
 
 class DatasetCreatorCustomHSMM:
     """
-    Classe pour générer des datasets basés sur des modèles HSMM.
+    Class for generating datasets based on HSMM models.
     """
 
     def __init__(self, outpath, nb_samples_per_model, min_length, max_length) -> None:
         """
-        Initialise le DatasetCreatorCustomHSMM.
+        Initialize the DatasetCreatorCustomHSMM.
 
         Args:
-            outpath (str): Chemin de sortie pour les fichiers générés.
-            nb_samples_per_model (int): Nombre d'échantillons à générer par modèle.
-            min_length (int): Longueur minimale des séquences.
-            max_length (int): Longueur maximale des séquences.
+            outpath (str): Output path for generated files.
+            nb_samples_per_model (int): Number of samples to generate per model.
+            min_length (int): Minimum sequence length.
+            max_length (int): Maximum sequence length.
         """
         self.year_no = 0
         self._number_samples_per_model = nb_samples_per_model
@@ -219,15 +222,15 @@ class DatasetCreatorCustomHSMM:
 
     def generate_seq(self, starting_state, year, hsmm: HSMM = None):
         """
-        Génère une séquence pour un état initial donné.
+        Generate a sequence for a given initial state.
 
         Args:
-            starting_state (Observation): État initial.
-            year (int): Année.
-            hsmm (HSMM, optional): Modèle HSMM.
+            starting_state (Observation): Initial state.
+            year (int): Year.
+            hsmm (HSMM, optional): HSMM model.
 
         Returns:
-            list: Séquence générée.
+            list: Generated sequence.
         """
         if starting_state in [Observation.FLORAL, Observation.SMALL]:
             return [0, 0, 0, 0]
@@ -235,11 +238,11 @@ class DatasetCreatorCustomHSMM:
 
     def create_data(self, to_CSV=False, rewrite=True):
         """
-        Génère les données et les stocke dans un DataFrame.
+        Generate the data and store it in a DataFrame.
 
         Args:
-            to_CSV (bool): Si True, exporte les données en CSV.
-            rewrite (bool): Si True, écrase les fichiers existants.
+            to_CSV (bool): If True, export the data to CSV.
+            rewrite (bool): If True, overwrite existing files.
         """
         start_time = time()
         dataset = []
@@ -276,6 +279,7 @@ class DatasetCreatorCustomHSMM:
 
 
 if __name__ == "__main__":
-    # Exemple d'utilisation
-    datasetcreator = DatasetCreatorCustomHSMM("dataset/", 10000, 4, 70)
+    # Example usage
+    datasetcreator = DatasetCreatorCustomHSMM("dataset/", 100, 4, 70)
+    datasetcreator = DatasetCreator("dataset/", 100, 4, 70, 100)
     datasetcreator.create_data(True)

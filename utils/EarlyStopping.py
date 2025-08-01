@@ -1,16 +1,28 @@
+"""
+This module defines an early stopping handler for training neural networks.
+"""
+
 import numpy as np
 import torch
+import os
 
 class EarlyStopping:
+    """
+    Early stopping handler to stop training when validation loss stops improving.
+
+    This class monitors the validation loss and stops training when the loss
+    hasn't improved for a specified number of epochs (patience).
+    """
+
     def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pth'):
         """
-        Initialise l'early stopping.
+        Initialize early stopping parameters.
 
         Args:
-            patience (int): Nombre d'époques à attendre après que la perte ait cessé de s'améliorer.
-            verbose (bool): Si True, imprime un message à chaque amélioration.
-            delta (float): Changement minimal à considérer comme une amélioration.
-            path (str): Chemin pour sauvegarder le checkpoint.
+            patience (int): Number of epochs to wait after validation loss stops improving.
+            verbose (bool): If True, prints a message for each validation loss improvement.
+            delta (float): Minimum change to qualify as an improvement.
+            path (str): Path to save the model checkpoint.
         """
         self.patience = patience
         self.verbose = verbose
@@ -21,13 +33,16 @@ class EarlyStopping:
         self.delta = delta
         self.path = path
 
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
     def __call__(self, val_loss, model):
         """
-        Vérifie si l'early stopping doit être déclenché.
+        Check if early stopping should be triggered.
 
         Args:
-            val_loss (float): La perte de validation actuelle.
-            model (torch.nn.Module): Le modèle à sauvegarder.
+            val_loss (float): Current validation loss.
+            model (torch.nn.Module): Model to save if validation loss improves.
         """
         score = -val_loss
 
@@ -42,18 +57,17 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            # self.save_checkpoint(val_loss, model)
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
         """
-        Sauvegarde le modèle lorsque la perte de validation s'améliore.
+        Save the model checkpoint.
 
         Args:
-            val_loss (float): La perte de validation actuelle.
-            model (torch.nn.Module): Le modèle à sauvegarder.
+            val_loss (float): Current validation loss.
+            model (torch.nn.Module): Model to save.
         """
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            print(f'Saving model checkpoint with val_loss: {val_loss:.6f}')
         torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss

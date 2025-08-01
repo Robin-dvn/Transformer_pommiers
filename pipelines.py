@@ -19,7 +19,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, CyclicLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import wandb
-
+import pandas as  pd
 # Local imports
 from utils.EarlyStopping import EarlyStopping
 from PommierDataset import (
@@ -242,7 +242,7 @@ def train_decoder_only(config_dict, trial=None):
         for epoch in tqdm(range(nb_epoch), colour="green"):
             model.train()
             total_train_loss_unweighted = 0
-            for input_seq, target_seq, _ in tqdm(
+            for input_seq, target_seq in tqdm(
                 train_loader,
                 desc=f"Epoch {epoch} - Train",
                 colour="red"
@@ -298,7 +298,7 @@ def train_decoder_only(config_dict, trial=None):
             model.eval()
             total_eval_loss_unweighted = 0
             with torch.no_grad():
-                for input_seq, target_seq, loss_mask in tqdm(
+                for input_seq, target_seq in tqdm(
                     val_loader,
                     desc=f"Epoch {epoch} - Val",
                     colour="yellow"
@@ -306,7 +306,6 @@ def train_decoder_only(config_dict, trial=None):
                     try:
                         input_seq = input_seq.to(device)
                         target_seq = target_seq.to(device)
-                        loss_mask = loss_mask.to(device)
                         padding_mask = (input_seq == 0).to(torch.bool).to(model.device)
                         logits = model(input_seq, padding_mask)
                         logits_trim = logits[:, 2:, :]
@@ -359,11 +358,12 @@ def train_decoder_only(config_dict, trial=None):
         }, experiment_path / "model_state.pth")
 
         # Calculate the average over the last 20 epochs
-        last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses))
+        
+        last_20_epochs_val_loss = sum(val_losses[-20:]) / min(20, len(val_losses),-1)
 
         # If in an Optuna trial, use the average of the last 20 epochs
         final_val_loss = last_20_epochs_val_loss
-
+        # print(model,experiment_path, final_val_loss, wandb.run)
         return model, experiment_path, final_val_loss, wandb.run
 
     except GPUOutOfMemoryError as e:
@@ -425,17 +425,20 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
     }
 
     # Initialize the validator
-    validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
+    # validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
     st = time()
     try:
-        validator.generate_data(10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
+        generate_data(model, device, vocab_to_id, 10000, experiment_path / "generated_dataset.csv", end_toks_list=[7, 8, 9, 10, 11])
     except ValidationError as e:
         print(f"[ERROR] {e}")
         return None
 
     print("Génération terminée")
-    return None
+
+   
     et = time()
+    validator = Validator(model, device, token_to_id=vocab_to_id, validation_folder_path=experiment_path)
+
     print(f"[INFO] le temps en secondes pour la génération est de : {et-st}")
     validator.load_data("dataset/markov_python_generated_dataset10000.csv")
     st = time()
@@ -491,3 +494,74 @@ def train_generate_validate_pipeline(config_dict, trial=None, sync_wandb=False):
         wandb_run.finish(quiet=True)
 
     return stats["final_val"]
+
+
+def generate_data( model,device,token_to_id,nb_samples, output_path, end_toks_list):
+    """
+    Génère des données en utilisant le modèle Transformer.
+
+    Args:
+        nb_samples (int): Nombre d'échantillons à générer par couple (type,année).
+        output_path (str): Chemin où sauvegarder les données générées.
+        end_toks_list (list): Liste des tokens de fin.
+    """
+    if model is None or device is None:
+        raise ValueError("Le modèle et le device doivent être initialisés pour générer des données")
+
+    if token_to_id is None:
+        raise ValueError("Le dictionnaire token_to_id doit être initialisé pour générer des données")
+    id_to_token = {v: k for k, v in token_to_id.items()}
+    sequences_generees = []
+    decoder_only = True
+    for type in tqdm(range(8, 12)):
+        for year in range(12, 17):
+
+            if nb_samples > 1000:
+                for i in range(0, nb_samples, 1000):
+                    batch_size = min(1000, nb_samples - i )
+                    start_seq = torch.tensor([[type, year]] * batch_size, device=device)
+
+                    generated_seq = model.generate_batch(start_seq, 1, device, end_toks_list, batch_size=int(batch_size))
+                    if not decoder_only:
+                        sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                    else:
+                        sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 3:]), dim=1).to('cpu').tolist())
+            else:
+                start_seq = torch.tensor([[type, year]] * nb_samples, device=device)
+
+                generated_seq = model.generate_batch(start_seq, 1, device, end_toks_list, batch_size=nb_samples)
+                if not decoder_only:
+                    sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 1:]), dim=1).to('cpu').tolist())
+                else:
+                    sequences_generees.extend(torch.cat((start_seq, generated_seq[:, 3:]), dim=1).to('cpu').tolist())
+
+
+    print(f"[INFO] Generated {len(sequences_generees)} sequences")
+    print(f"[INFO] converting to dataset: ")
+    data_generated = []
+    for seq in tqdm(sequences_generees):
+        print(seq)
+        datasetform = []
+        digits = ""
+
+        for item in seq:
+            
+            if item in id_to_token:
+
+                if id_to_token[item].isdigit():
+                    digits += id_to_token[item]
+                    continue
+
+                if digits != "":
+                    datasetform.append(digits)
+                datasetform.append(id_to_token[item])
+                digits = ""
+
+                if item in end_toks_list and len(datasetform) !=1:
+                    break
+        print(f"[INFO] datasetform: {datasetform}")
+        data_generated.append(datasetform)
+
+    df = pd.DataFrame(data_generated, columns=["Observation", "Year", "Sequence", "Terminal Fate"])
+    print(f"[INFO] Saving to {output_path}")
+    df.to_csv(output_path, index=False)

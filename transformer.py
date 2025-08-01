@@ -32,15 +32,23 @@ import torch.nn.functional as F
 
 
 class ValidationError(Exception):
-    """Exception levée lors d'une erreur de validation."""
+    """Exception raised during validation error."""
     pass
 
 class GPUOutOfMemoryError(Exception):
-    """Exception levée lors d'une erreur de mémoire GPU."""
+    """Exception raised when GPU memory is insufficient."""
     pass
 
 class PositionalEncoding(nn.Module):
 
+    """
+    Implements positional encoding for input embeddings.
+
+    Args:
+        d_model (int): Dimension of the model.
+        dropout (float): Dropout rate.
+        max_len (int): Maximum sequence length.
+    """
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -54,15 +62,30 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
+        """
+        Adds positional encoding to the input tensor.
+
+        Args:
+            x (Tensor): Input tensor of shape (batch_size, seq_len, d_model).
+
+        Returns:
+            Tensor: Tensor with positional encoding applied.
+        """
         x = x + self.pe[:, :x.size(1), :]  # [B, T, D]
-
-
         return self.dropout(x)
 
 class BadPositionalEncoding(nn.Module):
 
+    """
+    Implements an alternative (incorrect) positional encoding for input embeddings.
+
+    Args:
+        d_model (int): Dimension of the model.
+        dropout (float): Dropout rate.
+        max_len (int): Maximum sequence length.
+    """
     def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
+        super(BadPositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         pe = torch.zeros(max_len, d_model)
@@ -75,7 +98,7 @@ class BadPositionalEncoding(nn.Module):
 
     def forward(self, x):
         """
-        Applies positional encoding to the input tensor.
+        Adds positional encoding to the input tensor (incorrect shape).
 
         Args:
             x (Tensor): Input tensor of shape (seq_len, batch_size, d_model).
@@ -110,12 +133,10 @@ class DecoderOnlyTransformerLayer(nn.TransformerDecoderLayer):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  activation=F.relu, layer_norm_eps=1e-5, batch_first=False,
                  norm_first=False, bias=True, device=None, dtype=None):
-        super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
+
         super().__init__(d_model, nhead, dim_feedforward, dropout, activation,
                          layer_norm_eps, batch_first, norm_first, bias, device, dtype)
 
-    def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
-                tgt_key_padding_mask=None, memory_key_padding_mask=None,
 
     def forward(self, tgt, memory=None, tgt_mask=None, memory_mask=None,
                 tgt_key_padding_mask=None, memory_key_padding_mask=None,
@@ -172,7 +193,7 @@ class TransformerDecoderOnly(nn.Module):
     def __init__(self, vocab_size, d_model, n_head, num_decoder_layers, padding_idx,dim_feedforward=1024):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
-        self.posEmbed = PositionalEncoding(d_model)
+        self.posEmbed = BadPositionalEncoding(d_model)
         decoder_layer = DecoderOnlyTransformerLayer(d_model, n_head, batch_first=True, dropout=0.1,dim_feedforward=dim_feedforward)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
         self.fc_out = nn.Linear(d_model, vocab_size)

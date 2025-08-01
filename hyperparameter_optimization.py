@@ -110,7 +110,7 @@ if __name__ == "__main__":
         "n_trials": len(study.trials),
         "n_pruned_trials": len(study.get_trials(states=[optuna.trial.TrialState.PRUNED]))
     }
-    }
+    
 
     with open("experiments/optuna_results.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4)

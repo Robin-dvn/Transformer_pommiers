@@ -77,8 +77,7 @@ class PommierDatasetDecoderOnly(Dataset):
           - full_seq = [token1, token2, <SOS>, token3, token4, ...]
           - input_seq  = full_seq[:-1]
           - target_seq = full_seq[1:]
-        The loss will be calculated only from the token located after <SOS>.
-        Here, positions 0, 1, and 2 are ignored.
+
         """
         token_ids = self.dataset.iloc[idx]["token_ids"]
         full_seq = token_ids[:2] + [self.token_to_id["<SOS>"]] + token_ids[2:]
@@ -86,21 +85,15 @@ class PommierDatasetDecoderOnly(Dataset):
         target_seq = torch.tensor(full_seq[1:], dtype=torch.long)
         # print(target_seq)
 
-        loss_mask = torch.zeros(len(input_seq), dtype=torch.bool)
-        # On calcule la perte seulement à partir du token après <SOS> (index 3 et plus)
-        if len(loss_mask) > 3:
-            loss_mask[2:] = True
-        # print(loss_mask)
-        return input_seq, target_seq, loss_mask
+        return input_seq, target_seq
 
 
 
 def collate_fn_decoder_only(batch):
-    inputs, targets, masks = zip(*batch)
+    inputs, targets = zip(*batch)
     inputs = pad_sequence(inputs, batch_first=True, padding_value=0)   # <PAD> = 0
     targets = pad_sequence(targets, batch_first=True, padding_value=0)
-    masks = pad_sequence(masks, batch_first=True, padding_value=False)
-    return inputs, targets, masks
+    return inputs, targets
 
 
 class DecoderOnlyDynamicPommierDataset(Dataset):
@@ -179,7 +172,7 @@ class DecoderOnlyDynamicPommierDataset(Dataset):
         if len(loss_mask) > 3:
             loss_mask[2:] = True
 
-        return input_seq, target_seq, loss_mask
+        return input_seq, target_seq
 
     def generate_seq(self, starting_state, year, hsmm=None):
         """Generates a sequence based on the starting state and year."""
@@ -207,7 +200,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate_fn_decoder_only)
 
     for batch in train_loader:
-        inputs, targets, masks = batch
+        inputs, targets = batch
         # Ici, vous pouvez passer 'batch' à votre modèle pour l'entraînement
         print(inputs, targets)
         break
