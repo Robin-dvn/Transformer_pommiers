@@ -141,9 +141,10 @@ class Markov:
                     f"Distribution {distribution['distribution']} not supported"
                 )
 
-            occupency = fn(*parameters)+lbound
-            occupancies.append(occupancy)
-
+            occupancy = fn(*parameters)+lbound
+            # print("occupancy", occupancy, "for state", state)
+            occupancies.append(int(occupancy))
+        # print("occupancies", occupancies)
         # early return if we know we do not satisfy bounds
         length = sum(occupancies)
         if length > upper_bound or length < lower_bound:

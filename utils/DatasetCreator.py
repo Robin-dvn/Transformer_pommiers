@@ -280,6 +280,6 @@ class DatasetCreatorCustomHSMM:
 
 if __name__ == "__main__":
     # Example usage
-    datasetcreator = DatasetCreatorCustomHSMM("dataset/", 100, 4, 70)
-    datasetcreator = DatasetCreator("dataset/", 100, 4, 70, 100)
-    datasetcreator.create_data(True)
+    # datasetcreator = DatasetCreatorCustomHSMM("dataset/", 10000, 4, 70)
+    datasetcreator = DatasetCreator("dataset/", 100, 4, 70, 10000)
+    datasetcreator.create_data(True,rewrite=False)
